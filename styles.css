@@ -1,0 +1,66 @@
+﻿/* Custom Styling and Kiosk Optimizations */
+
+@layer base {
+  html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+}
+
+/* Pulse animation for active pass */
+@keyframes soft-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 0.95;
+  }
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 3s infinite ease-in-out;
+}
+
+/* Custom Scrollbar for Student Lists & Tables */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* High Visibility Screen Transition */
+body {
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* Touch Button Press tactile feedback */
+button:active {
+  transform: scale(0.97);
+}
+
+/* Focus outline for accessibility */
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid #3b82f6;
+  outline-offset: 2px;
+}
