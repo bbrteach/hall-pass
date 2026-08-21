@@ -1,18 +1,20 @@
-// Classroom Hall Pass Kiosk - Standalone Universal Bundle (iPad & Safari Safe)
-(function() {
+// Classroom Hall Pass Kiosk - Universal Standalone Application
+(function(window, document) {
   'use strict';
 
-  // Global on-screen diagnostic handler for iPad / Mobile debugging
+  // Global on-screen diagnostic notification if any runtime error ever occurs
   window.addEventListener('error', function(e) {
     console.error('Kiosk runtime error:', e);
     var errBox = document.getElementById('kiosk-fatal-error');
-    if (!errBox) {
+    if (!errBox && document.body) {
       errBox = document.createElement('div');
       errBox.id = 'kiosk-fatal-error';
-      errBox.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#b91c1c;color:#ffffff;padding:12px;font-family:sans-serif;font-size:13px;font-weight:bold;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,0.5);text-align:center;';
+      errBox.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#ffffff;padding:12px;font-family:sans-serif;font-size:13px;font-weight:bold;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,0.5);text-align:center;';
       document.body.appendChild(errBox);
     }
-    errBox.innerHTML = '⚠️ Kiosk Startup Notice: ' + (e.message || 'Error loading application') + (e.lineno ? ' (Line ' + e.lineno + ')' : '');
+    if (errBox) {
+      errBox.innerHTML = '⚠️ Kiosk Notice: ' + (e.message || 'Error running application') + (e.lineno ? ' (Line ' + e.lineno + ')' : '');
+    }
   });
 
   // --- AUDIO MODULE ---
@@ -2041,7 +2043,7 @@ class TeacherDashboard {
   // --- MAIN APPLICATION COORDINATOR ---
   // Main Application Coordinator & Kiosk View Controller
 
-export class HallPassApp {
+class HallPassApp {
   constructor() {
     this.storage = storage;
     this.sounds = sounds;
@@ -2874,4 +2876,4 @@ if (typeof document !== 'undefined') {
 }
 
 
-})();
+})(typeof window !== 'undefined' ? window : this, typeof document !== 'undefined' ? document : null);
