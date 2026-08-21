@@ -685,6 +685,7 @@ export class TeacherDashboard {
     document.getElementById('input-emergency-teachers').value = settings.emergencyTeachers || 'Mr. Roberts or Mr. Hoerter';
     document.getElementById('input-courtesy-msg').value = settings.courtesyMessage || '';
     document.getElementById('input-dashboard-pin').value = settings.pin || '1234';
+    document.getElementById('input-waitlist-enabled').checked = settings.waitListEnabled !== false;
     document.getElementById('input-audio-enabled').checked = settings.audioEnabled !== false;
     document.getElementById('input-wakelock-enabled').checked = settings.wakeLockEnabled !== false;
     document.getElementById('input-max-duration').value = settings.maxTripDurationMins || 10;
@@ -692,12 +693,20 @@ export class TeacherDashboard {
 
   saveSettings() {
     const settings = this.storage.getSettings();
+    const prevWaitlist = settings.waitListEnabled !== false;
+    const newWaitlist = document.getElementById('input-waitlist-enabled').checked;
+
     settings.emergencyTeachers = document.getElementById('input-emergency-teachers').value.trim() || 'Mr. Roberts or Mr. Hoerter';
     settings.courtesyMessage = document.getElementById('input-courtesy-msg').value.trim();
     settings.pin = document.getElementById('input-dashboard-pin').value.trim() || '1234';
+    settings.waitListEnabled = newWaitlist;
     settings.audioEnabled = document.getElementById('input-audio-enabled').checked;
     settings.wakeLockEnabled = document.getElementById('input-wakelock-enabled').checked;
     settings.maxTripDurationMins = parseInt(document.getElementById('input-max-duration').value, 10) || 10;
+
+    if (prevWaitlist && !newWaitlist) {
+      this.queueManager.purgeWaitList('Teacher disabled wait list feature');
+    }
 
     this.storage.saveSettings(settings);
     if (this.sounds) this.sounds.enabled = settings.audioEnabled;

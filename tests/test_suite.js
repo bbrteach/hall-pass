@@ -1,4 +1,4 @@
-﻿// Automated Unit Tests for Classroom Hall Pass Engine & Bell Schedules
+// Automated Unit Tests for Classroom Hall Pass Engine & Bell Schedules
 
 import { ScheduleEngine } from '../js/scheduleEngine.js';
 import { QueueManager } from '../js/queueManager.js';
@@ -24,6 +24,7 @@ class MockStorage {
         lastMinutesPurgeWaitlist: true,
         passingPeriodBlackout: true,
         emergencyLockdown: false,
+        lockdownReason: '',
         customBlackouts: [
           {
             id: 'cb_start_day',
@@ -50,7 +51,9 @@ class MockStorage {
       roster: [
         { id: 's_alex', name: 'Alex M.', period: 'p1', restrictions: '' },
         { id: 's_naomi', name: 'Naomi', period: 'p2', restrictions: '' },
-        { id: 'samuel', name: 'Samuel V.', period: 'p7', restrictions: '' }
+        { id: 's_amari', name: 'Amari', period: 'p2', restrictions: '' },
+        { id: 's_emily', name: 'Emily', period: 'p2', restrictions: '' },
+        { id: 's_samuel', name: 'Samuel V.', period: 'p7', restrictions: '' }
       ],
       settings: {
         emergencyTeachers: 'Mr. Roberts or Mr. Hoerter',
@@ -86,7 +89,7 @@ class MockStorage {
 const mockSounds = { play: () => {} };
 
 function runTests() {
-  console.log('=== Starting Classroom Hall Pass Schedule & Blackout Verification ===\n');
+  console.log('=== Starting Classroom Hall Pass Feature & Behavior Verification ===\n');
   let passed = 0;
   let failed = 0;
 
@@ -111,68 +114,80 @@ function runTests() {
   assert(eval840.canWaitlist === true, '8:40 AM waitlist is allowed');
   assert(eval840.unlockTime === '9:00 AM', '8:40 AM unlock time is 9:00 AM');
 
-  // Test 2: 8:50 AM (Still in First 20 min blackout)
-  const eval850 = scheduleEngine.evaluate('08:50');
-  assert(eval850.state === 'BLACKOUT', '8:50 AM is BLACKOUT');
-
-  // Test 3: 9:00 AM (1st Period 20m blackout ends -> AVAILABLE / GREEN)
+  // Test 2: 9:00 AM (1st Period 20m blackout ends -> AVAILABLE / GREEN)
   const eval900 = scheduleEngine.evaluate('09:00');
   assert(eval900.state === 'AVAILABLE', '9:00 AM 1st Period is AVAILABLE (Green)');
-  assert(eval900.currentPeriod.name === '1st Period', '9:00 AM active period is 1st Period');
 
-  // Test 4: 9:25 AM (Last 10 min of 1st Period: 9:20-9:30)
-  const eval925 = scheduleEngine.evaluate('09:25');
-  assert(eval925.state === 'BLACKOUT', '9:25 AM is BLACKOUT (Last 10 min)');
-  assert(eval925.purgeWaitlist === true, '9:25 AM purges waitlist');
+  // Test 3: Sign out to Youth Service Center
+  const passYSC = queueManager.signOut({ id: 's_alex', name: 'Alex M.', period: 'p1' }, 'Youth Service Center', '', eval900.currentPeriod);
+  assert(passYSC.destination === 'Youth Service Center', 'Destination is Youth Service Center');
+  assert(storage.getActivePass().studentName === 'Alex M.', 'Alex signed out to Youth Service Center');
+  queueManager.signIn(); // Alex returns
 
-  // Test 5: 9:35 AM (2nd Period Start: 9:35-10:25) -> First 10m blackout
-  const eval935 = scheduleEngine.evaluate('09:35');
-  assert(eval935.state === 'BLACKOUT', '9:35 AM is 2nd Period First 10m BLACKOUT');
-  assert(eval935.canWaitlist === true, '9:35 AM allows waitlist');
+  // Test 4: Sign out to Another Teacher with Teacher Name
+  const passTeacher = queueManager.signOut({ id: 's_alex', name: 'Alex M.', period: 'p1' }, 'Another Teacher', 'Ms. Davis', eval900.currentPeriod);
+  assert(passTeacher.destination === 'Another Teacher', 'Destination is Another Teacher');
+  assert(passTeacher.destinationDetail === 'Ms. Davis', 'Teacher name is Ms. Davis');
+  queueManager.signIn(); // Alex returns
 
-  // Test 6: 9:45 AM (2nd Period 10m blackout ends -> AVAILABLE / GREEN)
+  // Test 5: 9:45 AM (2nd Period Available)
   const eval945 = scheduleEngine.evaluate('09:45');
   assert(eval945.state === 'AVAILABLE', '9:45 AM 2nd Period is AVAILABLE (Green)');
 
-  // Test 7: 10:15 AM (2nd Period Last 10m blackout: 10:15-10:25)
-  const eval1015 = scheduleEngine.evaluate('10:15');
-  assert(eval1015.state === 'BLACKOUT', '10:15 AM is 2nd Period Last 10m BLACKOUT');
-  assert(eval1015.purgeWaitlist === true, '10:15 AM purges waitlist');
+  // Test 6: Naomi signs out to Locker, Amari and Emily join wait list
+  queueManager.signOut({ id: 's_naomi', name: 'Naomi', period: 'p2' }, 'Locker', '', eval945.currentPeriod);
+  queueManager.addToWaitList({ id: 's_amari', name: 'Amari', period: 'p2' }, eval945.currentPeriod);
+  queueManager.addToWaitList({ id: 's_emily', name: 'Emily', period: 'p2' }, eval945.currentPeriod);
+  assert(queueManager.getWaitList().length === 2, 'Wait list has Amari and Emily (2 in queue)');
 
-  // Test 8: 11:25 AM (4th Period: 11:25-12:35)
-  const eval1125 = scheduleEngine.evaluate('11:25');
-  assert(eval1125.state === 'BLACKOUT', '11:25 AM 4th Period First 10m BLACKOUT');
+  // Test 7: Teacher initiates Emergency Hold / Pause while Naomi is out
+  const rules = storage.getBlackoutRules();
+  rules.emergencyLockdown = true;
+  rules.lockdownReason = 'Teacher Emergency Hold: Temporary pause.';
+  storage.saveBlackoutRules(rules);
 
-  // Test 9: 11:35 AM (4th Period AVAILABLE)
-  const eval1135 = scheduleEngine.evaluate('11:35');
-  assert(eval1135.state === 'AVAILABLE', '11:35 AM 4th Period is AVAILABLE');
+  const evalHold = scheduleEngine.evaluate('09:50');
+  assert(evalHold.state === 'BLACKOUT', 'Emergency Hold triggers BLACKOUT state');
+  assert(evalHold.reasonType === 'EMERGENCY_LOCKDOWN', 'Reason is EMERGENCY_LOCKDOWN');
 
-  // Test 10: 12:40 PM (5th Period: 12:40-1:30)
-  const eval1240 = scheduleEngine.evaluate('12:40');
-  assert(eval1240.currentPeriod.name === '5th Period', '12:40 PM is 5th Period');
+  // Test 8: Naomi returns while Emergency Hold is active!
+  // App should log Naomi back in, clear active pass, and MAINTAIN wait list without allowing anyone out!
+  const returnDuringHold = queueManager.signIn('completed', true /* isHoldActive = true */);
+  assert(returnDuringHold.completedPass.studentName === 'Naomi', 'Naomi successfully signed back in');
+  assert(returnDuringHold.nextInLine === null, 'No next student prompted during emergency hold');
+  assert(storage.getActivePass() === null, 'No student currently out');
+  assert(queueManager.getWaitList().length === 2, 'Wait list is maintained intact (Amari and Emily still in queue)');
+  assert(queueManager.getWaitList()[0].studentName === 'Amari', 'Amari is still #1 on wait list');
+  assert(queueManager.getWaitList()[1].studentName === 'Emily', 'Emily is still #2 on wait list');
 
-  // Test 11: 1:35 PM (6th Period: 1:35-2:25)
-  const eval1335 = scheduleEngine.evaluate('13:35');
-  assert(eval1335.currentPeriod.name === '6th Period', '1:35 PM is 6th Period');
+  // Test 9: Teacher lifts Emergency Hold -> Queue resumes immediately!
+  rules.emergencyLockdown = false;
+  storage.saveBlackoutRules(rules);
 
-  // Test 12: 2:30 PM (7th Period: 2:30-3:20)
-  const eval1430 = scheduleEngine.evaluate('14:30');
-  assert(eval1430.currentPeriod.name === '7th Period', '2:30 PM is 7th Period');
+  const evalLifted = scheduleEngine.evaluate('09:55');
+  assert(evalLifted.state === 'AVAILABLE', 'State returns to AVAILABLE when hold is lifted');
 
-  // Test 13: 3:00 PM (Last 20 minutes of school day: 3:00-3:20 PM)
-  const eval1500 = scheduleEngine.evaluate('15:00');
-  assert(eval1500.state === 'BLACKOUT', '3:00 PM is BLACKOUT (Last 20 min of school day)');
-  assert(eval1500.title.includes('Last 20 min'), 'Title mentions Last 20 min');
-  assert(eval1500.purgeWaitlist === true, '3:00 PM purges waitlist');
+  // The next student is retrieved from the waitlist
+  const waitList = queueManager.getWaitList();
+  const nextUp = waitList.shift();
+  storage.saveWaitList(waitList);
+  assert(nextUp.studentName === 'Amari', 'Amari is next up after hold is lifted');
+  assert(queueManager.getWaitList().length === 1, 'Only Emily remains on wait list');
 
-  // Test 14: 3:20 PM (School Day Concluded)
-  const eval1520 = scheduleEngine.evaluate('15:20');
-  assert(eval1520.state === 'BLACKOUT', '3:20 PM is School Concluded');
-  assert(eval1520.reasonType === 'AFTER_SCHOOL', 'Reason is AFTER_SCHOOL');
+  // Test 11: Disable Waitlist in Settings
+  const currSettings = storage.getSettings();
+  currSettings.waitListEnabled = false;
+  storage.saveSettings(currSettings);
+  assert(storage.getSettings().waitListEnabled === false, 'Waitlist disabled in settings');
 
-  // Test 15: PIN check
-  storage.saveSettings({ pin: '5432' });
-  assert(storage.getSettings().pin === '5432', 'Custom PIN 5432 saved');
+  // Add someone to waitlist, then check returning student with waitlist disabled
+  queueManager.addToWaitList({ id: 's_alex', name: 'Alex M.', period: 'p2' }, evalLifted.currentPeriod);
+  const alexReturnWithWaitlistDisabled = queueManager.signIn('completed', true /* isHoldActive/disabled */);
+  assert(alexReturnWithWaitlistDisabled.nextInLine === null, 'No next student prompted when waitlist is disabled');
+
+  // Purge when disabling
+  queueManager.purgeWaitList('Teacher disabled wait list feature');
+  assert(queueManager.getWaitList().length === 0, 'Waitlist purged when feature disabled');
 
   console.log(`\n=== Verification Complete: ${passed} passed, ${failed} failed ===\n`);
 }

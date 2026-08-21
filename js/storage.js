@@ -1,4 +1,4 @@
-﻿// Storage and Data Management Layer with Multi-Teacher / Room Profile support
+// Storage and Data Management Layer with Multi-Teacher / Room Profile support
 
 function getRoomPrefix() {
   if (typeof window !== 'undefined' && window.location) {
@@ -130,6 +130,7 @@ const DEFAULT_SETTINGS = {
   googleSheetGid: '0',
   autoSyncMinutes: 10,
   lastSyncTime: null,
+  waitListEnabled: true,
   audioEnabled: true,
   wakeLockEnabled: true,
   maxTripDurationMins: 10,

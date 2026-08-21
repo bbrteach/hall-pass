@@ -71,7 +71,7 @@ const sounds = new SoundEffects();
 
 
   // --- STORAGE MODULE ---
-  ﻿// Storage and Data Management Layer with Multi-Teacher / Room Profile support
+  // Storage and Data Management Layer with Multi-Teacher / Room Profile support
 
 function getRoomPrefix() {
   if (typeof window !== 'undefined' && window.location) {
@@ -203,6 +203,7 @@ const DEFAULT_SETTINGS = {
   googleSheetGid: '0',
   autoSyncMinutes: 10,
   lastSyncTime: null,
+  waitListEnabled: true,
   audioEnabled: true,
   wakeLockEnabled: true,
   maxTripDurationMins: 10,
@@ -770,7 +771,7 @@ class QueueManager {
   }
 
   // Sign in / Return current student
-  signIn(overrideStatus = 'completed') {
+  signIn(overrideStatus = 'completed', isHoldActive = false) {
     const active = this.getActivePass();
     if (!active) {
       return { completedPass: null, nextInLine: null };
@@ -791,7 +792,14 @@ class QueueManager {
 
     if (this.sounds) this.sounds.play('checkin');
 
-    // Check wait list
+    // If an emergency hold / pause / blackout is active, DO NOT pop from waitlist or allow another sign-out!
+    // Maintain the entire wait list and return nextInLine: null
+    if (isHoldActive) {
+      this.nextPromptStudent = null;
+      return { completedPass, nextInLine: null };
+    }
+
+    // Normal pass return: check wait list
     let nextInLine = null;
     const waitList = this.getWaitList();
     if (waitList.length > 0) {
@@ -861,7 +869,7 @@ class QueueManager {
     return null;
   }
 
-  // Purge wait list (used when last 10 minutes begins or period changes)
+  // Purge wait list (used when last 10 minutes begins or school day concludes)
   purgeWaitList(reason = 'Dismissal / Blackout') {
     const waitList = this.getWaitList();
     const count = waitList.length;
@@ -874,8 +882,8 @@ class QueueManager {
   }
 
   // Force return (teacher override)
-  forceReturn() {
-    return this.signIn('teacher_override');
+  forceReturn(isHoldActive = false) {
+    return this.signIn('teacher_override', isHoldActive);
   }
 }
 
@@ -1973,6 +1981,7 @@ class TeacherDashboard {
     document.getElementById('input-emergency-teachers').value = settings.emergencyTeachers || 'Mr. Roberts or Mr. Hoerter';
     document.getElementById('input-courtesy-msg').value = settings.courtesyMessage || '';
     document.getElementById('input-dashboard-pin').value = settings.pin || '1234';
+    document.getElementById('input-waitlist-enabled').checked = settings.waitListEnabled !== false;
     document.getElementById('input-audio-enabled').checked = settings.audioEnabled !== false;
     document.getElementById('input-wakelock-enabled').checked = settings.wakeLockEnabled !== false;
     document.getElementById('input-max-duration').value = settings.maxTripDurationMins || 10;
@@ -1980,12 +1989,20 @@ class TeacherDashboard {
 
   saveSettings() {
     const settings = this.storage.getSettings();
+    const prevWaitlist = settings.waitListEnabled !== false;
+    const newWaitlist = document.getElementById('input-waitlist-enabled').checked;
+
     settings.emergencyTeachers = document.getElementById('input-emergency-teachers').value.trim() || 'Mr. Roberts or Mr. Hoerter';
     settings.courtesyMessage = document.getElementById('input-courtesy-msg').value.trim();
     settings.pin = document.getElementById('input-dashboard-pin').value.trim() || '1234';
+    settings.waitListEnabled = newWaitlist;
     settings.audioEnabled = document.getElementById('input-audio-enabled').checked;
     settings.wakeLockEnabled = document.getElementById('input-wakelock-enabled').checked;
     settings.maxTripDurationMins = parseInt(document.getElementById('input-max-duration').value, 10) || 10;
+
+    if (prevWaitlist && !newWaitlist) {
+      this.queueManager.purgeWaitList('Teacher disabled wait list feature');
+    }
 
     this.storage.saveSettings(settings);
     if (this.sounds) this.sounds.enabled = settings.audioEnabled;
@@ -1997,119 +2014,122 @@ class TeacherDashboard {
 
 
   // --- MAIN APPLICATION COORDINATOR ---
-  ﻿// Main Classroom Hall Pass Application Coordinator
+  // Main Application Coordinator & Kiosk View Controller
 
-class HallPassApp {
+export class HallPassApp {
   constructor() {
     this.storage = storage;
     this.sounds = sounds;
-    this.scheduleEngine = new ScheduleEngine(storage);
-    this.queueManager = new QueueManager(storage, sounds);
-    this.rosterSync = new RosterSync(storage);
-    this.analytics = new AnalyticsEngine(storage, this.scheduleEngine);
+    this.scheduleEngine = new ScheduleEngine(this.storage);
+    this.queueManager = new QueueManager(this.storage, this.sounds);
+    this.rosterSync = new RosterSync(this.storage);
+    this.analytics = new AnalyticsEngine(this.storage, this.scheduleEngine);
     this.dashboard = new TeacherDashboard(
-      storage,
+      this.storage,
       this.scheduleEngine,
       this.queueManager,
       this.rosterSync,
       this.analytics,
-      sounds
+      this.sounds
     );
 
-    this.selectedStudent = null;
-    this.selectedDestination = null;
-    this.selectedDestinationDetail = '';
-    this.previousState = null;
+    this.clockInterval = null;
     this.wakeLock = null;
-    this.tickInterval = null;
+    this.selectedStudent = null;
+    this.selectedDestination = 'Restroom';
+    this.selectedDestinationDetail = '';
+    this.pickerMode = 'signout'; // 'signout' or 'waitlist'
+    this.previousState = null;
   }
 
   init() {
     this.dashboard.init();
     this.bindKioskEvents();
-    this.bindSimulatorEvents();
+    this.initSimulator();
     this.initWakeLock();
+    this.startClockLoop();
 
-    // Listen for state change events from dashboard
     window.addEventListener('hallpass:statechange', () => {
       this.updateState();
     });
 
-    // Start 1-second master loop
-    this.tick();
-    this.tickInterval = setInterval(() => this.tick(), 1000);
-
-    console.log('Classroom Hall Pass App initialized successfully.');
-  }
-
-  // Master 1-second tick
-  tick() {
-    this.updateClock();
-    this.updateElapsedTimer();
+    // Initial evaluation
     this.updateState();
   }
 
-  // Update header clock
-  updateClock() {
-    const effective = this.scheduleEngine.getEffectiveTime();
-    const clockEl = document.getElementById('kiosk-live-clock');
-    const simBadge = document.getElementById('sim-mode-badge');
-
-    if (clockEl) {
-      const parts = effective.timeStr.split(':').map(Number);
-      const h = parts[0] || 0;
-      const m = parts[1] || 0;
-      const s = effective.seconds !== undefined ? effective.seconds : new Date().getSeconds();
-      const period = h >= 12 ? 'PM' : 'AM';
-      const hour12 = h % 12 === 0 ? 12 : h % 12;
-      clockEl.textContent = `${hour12}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')} ${period}`;
-    }
-
-    if (simBadge) {
-      if (effective.isSimulated) {
-        simBadge.classList.remove('hidden');
-      } else {
-        simBadge.classList.add('hidden');
+  // Request Screen Wake Lock so iPads / Chromebooks stay awake
+  async initWakeLock() {
+    const settings = this.storage.getSettings();
+    if (settings.wakeLockEnabled && 'wakeLock' in navigator) {
+      try {
+        this.wakeLock = await navigator.wakeLock.request('screen');
+        document.addEventListener('visibilitychange', async () => {
+          if (this.wakeLock !== null && document.visibilityState === 'visible') {
+            this.wakeLock = await navigator.wakeLock.request('screen');
+          }
+        });
+      } catch (err) {
+        console.log('Wake Lock request note:', err.message);
       }
     }
   }
 
-  // Update live elapsed timer on active pass
-  updateElapsedTimer() {
-    const activePass = this.queueManager.getActivePass();
-    const timerEl = document.getElementById('red-elapsed-timer');
-    const timerBlackEl = document.getElementById('black-elapsed-timer');
-
-    if (activePass) {
-      const elapsedSec = Math.max(0, Math.round((Date.now() - activePass.signOutTime) / 1000));
-      const formatted = this.scheduleEngine.formatDurationTimer(elapsedSec);
-      if (timerEl) timerEl.textContent = formatted;
-      if (timerBlackEl) timerBlackEl.textContent = formatted;
-    }
+  // 1-second Clock Loop and State Evaluation
+  startClockLoop() {
+    this.updateClockAndState();
+    this.clockInterval = setInterval(() => {
+      this.updateClockAndState();
+    }, 1000);
   }
 
-  // Core State Evaluation and UI switching
-  updateState() {
+  updateClockAndState() {
     const evaluation = this.scheduleEngine.evaluate();
+
+    // 1. Update Live Clock Display
+    const clockEl = document.getElementById('kiosk-live-clock');
+    if (clockEl) {
+      clockEl.textContent = evaluation.formattedTime;
+    }
+
+    // 2. Update Period Header Label
+    const periodLabelEl = document.getElementById('kiosk-period-label');
+    if (periodLabelEl) {
+      if (evaluation.currentPeriod) {
+        periodLabelEl.textContent = `${evaluation.currentPeriod.name} (${this.scheduleEngine.formatTime12Hour(evaluation.currentPeriod.start)} - ${this.scheduleEngine.formatTime12Hour(evaluation.currentPeriod.end)})`;
+      } else if (evaluation.nextPeriod) {
+        periodLabelEl.textContent = `Passing Period • Next: ${evaluation.nextPeriod.name} at ${this.scheduleEngine.formatTime12Hour(evaluation.nextPeriod.start)}`;
+      } else {
+        periodLabelEl.textContent = 'Outside Bell Schedule';
+      }
+    }
+
+    // 3. Update active pass timers if a student is out
+    const activePass = this.queueManager.getActivePass();
+    if (activePass && activePass.signOutTime) {
+      const elapsedSec = Math.max(0, Math.round((Date.now() - activePass.signOutTime) / 1000));
+      const elapsedFormatted = this.scheduleEngine.formatDuration(elapsedSec);
+
+      const redTimer = document.getElementById('red-elapsed-timer');
+      if (redTimer) redTimer.textContent = elapsedFormatted;
+
+      const blackTimer = document.getElementById('black-elapsed-timer');
+      if (blackTimer) blackTimer.textContent = elapsedFormatted;
+    }
+
+    // 4. Periodically update screen status if state changed or minute rolled over
+    this.updateState(evaluation);
+  }
+
+  // Update Visual State (Green, Red, Black Screen)
+  updateState(cachedEvaluation = null) {
+    const evaluation = cachedEvaluation || this.scheduleEngine.evaluate();
     const activePass = this.queueManager.getActivePass();
     const waitList = this.queueManager.getWaitList();
     const settings = this.storage.getSettings();
 
-    // Update Header Period Label
-    const periodLabel = document.getElementById('kiosk-period-label');
-    if (periodLabel) {
-      if (evaluation.currentPeriod) {
-        periodLabel.textContent = `${evaluation.currentPeriod.name} (${this.scheduleEngine.formatTime12Hour(evaluation.currentPeriod.start)} - ${this.scheduleEngine.formatTime12Hour(evaluation.currentPeriod.end)})`;
-      } else if (evaluation.nextPeriod) {
-        periodLabel.textContent = `Passing Period → ${evaluation.nextPeriod.name} at ${this.scheduleEngine.formatTime12Hour(evaluation.nextPeriod.start)}`;
-      } else {
-        periodLabel.textContent = evaluation.title;
-      }
-    }
-
-    // Check for automatic waitlist purge on Last-10-minute blackout transition
+    // Check Auto-Purge Waitlist flag (e.g. Last 10 minutes begins or school day concludes)
     if (evaluation.purgeWaitlist && (waitList.length > 0 || this.queueManager.nextPromptStudent)) {
-      this.queueManager.purgeWaitList('Last 10 minutes of class blackout');
+      this.queueManager.purgeWaitList('Last 10 minutes / Dismissal blackout');
       this.showToast('Wait list cleared for end-of-class dismissal preparation.', 'info');
     }
 
@@ -2121,7 +2141,7 @@ class HallPassApp {
     // Hide all screens initially
     [greenScreen, redScreen, blackScreen].forEach(s => s && s.classList.add('hidden'));
 
-    // 1. If currently in BLACKOUT
+    // 1. If currently in BLACKOUT (or Emergency Lockdown / Pause)
     if (evaluation.state === 'BLACKOUT') {
       if (blackScreen) {
         blackScreen.classList.remove('hidden');
@@ -2131,7 +2151,7 @@ class HallPassApp {
         document.getElementById('blackout-title').textContent = evaluation.title;
         document.getElementById('blackout-reason').textContent = evaluation.reason;
 
-        // If a student is currently out during blackout (e.g. Zoey at 10:15)
+        // If a student is currently out during blackout / emergency hold
         const blackoutActiveBox = document.getElementById('blackout-active-student-box');
         if (activePass) {
           blackoutActiveBox.classList.remove('hidden');
@@ -2142,12 +2162,22 @@ class HallPassApp {
           blackoutActiveBox.classList.add('hidden');
         }
 
+        // Waitlist Status Notice on Black Screen
+        const waitlistStatus = document.getElementById('blackout-waitlist-status');
+        if (waitlistStatus) {
+          if (settings.waitListEnabled !== false && waitList.length > 0) {
+            waitlistStatus.classList.remove('hidden');
+            waitlistStatus.innerHTML = `⏸️ <strong>Wait list paused:</strong> ${waitList.length} student(s) currently in line (${waitList.map(s => s.studentName).join(', ')}). Passes will resume in order once the hold/blackout is lifted.`;
+          } else {
+            waitlistStatus.classList.add('hidden');
+          }
+        }
+
         // Waitlist button in Blackout (allowed in first 10 min & passing period)
         const btnBlackoutWaitlist = document.getElementById('btn-blackout-waitlist');
         if (btnBlackoutWaitlist) {
-          if (evaluation.canWaitlist) {
+          if (settings.waitListEnabled !== false && evaluation.canWaitlist) {
             btnBlackoutWaitlist.classList.remove('hidden');
-            const targetP = evaluation.currentPeriod || evaluation.nextPeriod;
             btnBlackoutWaitlist.textContent = `+ Add Name to Wait List for ${evaluation.unlockTime || 'Class'}`;
           } else {
             btnBlackoutWaitlist.classList.add('hidden');
@@ -2171,8 +2201,31 @@ class HallPassApp {
           emergencyText.textContent = `In case of an extreme emergency, please talk to ${settings.emergencyTeachers || 'Mr. Roberts or Mr. Hoerter'}.`;
         }
 
-        // Render Waitlist Queue Widget on Red Screen
-        this.renderRedWaitlistWidget(waitList);
+        // Toggle Waitlist button & widget on Red Screen based on waitListEnabled setting
+        const btnRedWaitlist = document.getElementById('btn-red-waitlist');
+        const redWaitlistWidget = document.getElementById('red-waitlist-widget');
+        const redButtonsGrid = document.getElementById('red-buttons-grid');
+
+        if (btnRedWaitlist) {
+          if (settings.waitListEnabled !== false) {
+            btnRedWaitlist.classList.remove('hidden');
+            redButtonsGrid?.classList.add('sm:grid-cols-2');
+            redButtonsGrid?.classList.remove('sm:grid-cols-1');
+          } else {
+            btnRedWaitlist.classList.add('hidden');
+            redButtonsGrid?.classList.remove('sm:grid-cols-2');
+            redButtonsGrid?.classList.add('sm:grid-cols-1');
+          }
+        }
+
+        if (redWaitlistWidget) {
+          if (settings.waitListEnabled !== false) {
+            redWaitlistWidget.classList.remove('hidden');
+            this.renderRedWaitlistWidget(waitList);
+          } else {
+            redWaitlistWidget.classList.add('hidden');
+          }
+        }
       }
     } 
     // 3. PASS AVAILABLE (Green Screen)
@@ -2181,8 +2234,8 @@ class HallPassApp {
         greenScreen.classList.remove('hidden');
         document.body.className = 'bg-emerald-600 text-white min-h-screen flex flex-col font-sans transition-colors duration-500 select-none';
 
-        // Check if there are waitlisted students ready to be called
-        if (waitList.length > 0 && !this.queueManager.nextPromptStudent && !this.isModalOpen()) {
+        // If there are waitlisted students ready to be called once hold/blackout is lifted
+        if (settings.waitListEnabled !== false && waitList.length > 0 && !this.queueManager.nextPromptStudent && !this.isModalOpen()) {
           const next = waitList.shift();
           this.storage.saveWaitList(waitList);
           this.promptNextStudent(next);
@@ -2246,7 +2299,7 @@ class HallPassApp {
       });
     }
 
-    // 4. Blackout Screen -> Sign In Button (for active student returning during blackout)
+    // 4. Blackout Screen -> Sign In Button (for active student returning during blackout / hold)
     const btnBlackoutSignIn = document.getElementById('btn-blackout-signin');
     if (btnBlackoutSignIn) {
       btnBlackoutSignIn.addEventListener('click', () => {
@@ -2286,6 +2339,50 @@ class HallPassApp {
       });
     });
 
+    // Submit Teacher Destination button and Enter key
+    const btnSubmitTeacher = document.getElementById('btn-submit-teacher-dest');
+    if (btnSubmitTeacher) {
+      btnSubmitTeacher.addEventListener('click', () => this.submitTeacherDestination());
+    }
+    const inputTeacher = document.getElementById('input-dest-teacher');
+    if (inputTeacher) {
+      inputTeacher.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.submitTeacherDestination();
+        }
+      });
+    }
+
+    // Submit Custom Destination button and Enter key
+    const btnSubmitCustom = document.getElementById('btn-submit-custom-dest');
+    if (btnSubmitCustom) {
+      btnSubmitCustom.addEventListener('click', () => this.submitCustomDestination());
+    }
+    const inputCustom = document.getElementById('input-dest-custom');
+    if (inputCustom) {
+      inputCustom.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.submitCustomDestination();
+        }
+      });
+    }
+
+    // Next Student Destination dropdown change
+    const nextDestSelect = document.getElementById('next-student-destination-select');
+    if (nextDestSelect) {
+      nextDestSelect.addEventListener('change', (e) => {
+        const teacherBox = document.getElementById('next-dest-teacher-box');
+        if (e.target.value === 'Another Teacher') {
+          teacherBox?.classList.remove('hidden');
+          document.getElementById('input-next-dest-teacher')?.focus();
+        } else {
+          teacherBox?.classList.add('hidden');
+        }
+      });
+    }
+
     // 9. Confirm Sign Out button
     const btnConfirmSignOut = document.getElementById('btn-confirm-signout');
     if (btnConfirmSignOut) {
@@ -2320,6 +2417,12 @@ class HallPassApp {
 
   // Open Student Picker (for Sign Out or Waitlist)
   openStudentPicker(mode = 'signout') {
+    const settings = this.storage.getSettings();
+    if (mode === 'waitlist' && settings.waitListEnabled === false) {
+      this.showToast('Wait list is currently disabled in teacher settings.', 'warning');
+      return;
+    }
+
     this.pickerMode = mode;
     const modal = document.getElementById('student-picker-modal');
     const title = document.getElementById('student-picker-title');
@@ -2341,7 +2444,7 @@ class HallPassApp {
 
     const evaluation = this.scheduleEngine.evaluate();
     const targetPeriod = evaluation.currentPeriod || evaluation.nextPeriod;
-    const periodId = targetPeriod ? targetPeriod.id : 'p2';
+    const periodId = targetPeriod ? targetPeriod.id : 'p1';
 
     const roster = this.storage.getRoster() || [];
     const activePass = this.queueManager.getActivePass();
@@ -2449,21 +2552,25 @@ class HallPassApp {
     // Reset custom inputs
     document.getElementById('dest-teacher-input-box')?.classList.add('hidden');
     document.getElementById('dest-custom-input-box')?.classList.add('hidden');
-    document.getElementById('input-dest-teacher').value = '';
-    document.getElementById('input-dest-custom').value = '';
+    const inputT = document.getElementById('input-dest-teacher');
+    const inputC = document.getElementById('input-dest-custom');
+    if (inputT) inputT.value = '';
+    if (inputC) inputC.value = '';
 
     if (modal) modal.classList.remove('hidden');
   }
 
   handleDestinationSelected(dest) {
-    if (dest === 'teacher') {
+    if (dest === 'Another Teacher' || dest === 'teacher') {
+      document.getElementById('dest-custom-input-box')?.classList.add('hidden');
       const box = document.getElementById('dest-teacher-input-box');
       box?.classList.remove('hidden');
       document.getElementById('input-dest-teacher')?.focus();
       return;
     }
 
-    if (dest === 'other') {
+    if (dest === 'Other' || dest === 'other') {
+      document.getElementById('dest-teacher-input-box')?.classList.add('hidden');
       const box = document.getElementById('dest-custom-input-box');
       box?.classList.remove('hidden');
       document.getElementById('input-dest-custom')?.focus();
@@ -2472,6 +2579,32 @@ class HallPassApp {
 
     this.selectedDestination = dest;
     this.selectedDestinationDetail = '';
+    this.openCourtesyReminderModal();
+  }
+
+  submitTeacherDestination() {
+    const teacherInput = document.getElementById('input-dest-teacher');
+    const name = teacherInput ? teacherInput.value.trim() : '';
+    if (!name) {
+      alert('Please enter the name of the teacher you are visiting.');
+      teacherInput?.focus();
+      return;
+    }
+    this.selectedDestination = 'Another Teacher';
+    this.selectedDestinationDetail = name;
+    this.openCourtesyReminderModal();
+  }
+
+  submitCustomDestination() {
+    const customInput = document.getElementById('input-dest-custom');
+    const desc = customInput ? customInput.value.trim() : '';
+    if (!desc) {
+      alert('Please enter your destination details.');
+      customInput?.focus();
+      return;
+    }
+    this.selectedDestination = 'Other';
+    this.selectedDestinationDetail = desc;
     this.openCourtesyReminderModal();
   }
 
@@ -2493,18 +2626,6 @@ class HallPassApp {
   handleConfirmSignOut() {
     if (!this.selectedStudent) return;
 
-    // Check if another teacher or custom destination input was active
-    const teacherInput = document.getElementById('input-dest-teacher');
-    const customInput = document.getElementById('input-dest-custom');
-
-    if (!document.getElementById('dest-teacher-input-box')?.classList.contains('hidden') && teacherInput && teacherInput.value.trim()) {
-      this.selectedDestination = 'Another Teacher';
-      this.selectedDestinationDetail = teacherInput.value.trim();
-    } else if (!document.getElementById('dest-custom-input-box')?.classList.contains('hidden') && customInput && customInput.value.trim()) {
-      this.selectedDestination = 'Other';
-      this.selectedDestinationDetail = customInput.value.trim();
-    }
-
     const evaluation = this.scheduleEngine.evaluate();
     try {
       this.queueManager.signOut(
@@ -2523,13 +2644,18 @@ class HallPassApp {
 
   // Handle student check-in / return
   handleStudentSignIn() {
-    const res = this.queueManager.signIn();
+    const evaluation = this.scheduleEngine.evaluate();
+    const settings = this.storage.getSettings();
+    const waitListEnabled = settings.waitListEnabled !== false;
+    const isHoldActive = evaluation.state === 'BLACKOUT' || !waitListEnabled;
+    const res = this.queueManager.signIn('completed', isHoldActive);
+
     if (res.completedPass) {
       this.showToast(`Welcome back, ${res.completedPass.studentName}! (${this.scheduleEngine.formatDuration(res.completedPass.durationSeconds)})`, 'success');
     }
 
-    // Check if next student in queue should be called
-    if (res.nextInLine) {
+    // If nextInLine is available and hold/blackout is NOT active and waitListEnabled is true
+    if (res.nextInLine && !isHoldActive && waitListEnabled) {
       this.promptNextStudent(res.nextInLine);
     } else {
       this.updateState();
@@ -2550,7 +2676,13 @@ class HallPassApp {
     if (nameEl) nameEl.textContent = nextStudent.studentName;
 
     // Reset destination choices on next prompt
-    this.selectedDestination = 'restroom';
+    const destSelect = document.getElementById('next-student-destination-select');
+    if (destSelect) destSelect.value = 'Restroom';
+    document.getElementById('next-dest-teacher-box')?.classList.add('hidden');
+    const teacherInput = document.getElementById('input-next-dest-teacher');
+    if (teacherInput) teacherInput.value = '';
+
+    this.selectedDestination = 'Restroom';
     this.selectedDestinationDetail = '';
 
     if (modal) modal.classList.remove('hidden');
@@ -2560,13 +2692,24 @@ class HallPassApp {
   handleNextStudentSignOut() {
     const destSelect = document.getElementById('next-student-destination-select');
     const dest = destSelect ? destSelect.value : 'Restroom';
+    let detail = '';
+
+    if (dest === 'Another Teacher') {
+      const teacherInput = document.getElementById('input-next-dest-teacher');
+      detail = teacherInput ? teacherInput.value.trim() : '';
+      if (!detail) {
+        alert('Please enter the name of the teacher you are visiting.');
+        teacherInput?.focus();
+        return;
+      }
+    }
     
     const evaluation = this.scheduleEngine.evaluate();
     try {
       this.queueManager.signOut(
         this.selectedStudent,
         dest,
-        '',
+        detail,
         evaluation.currentPeriod
       );
       document.getElementById('next-student-modal')?.classList.add('hidden');
@@ -2577,18 +2720,35 @@ class HallPassApp {
     }
   }
 
+  // Next student says "I no longer need to leave"
   handleNextStudentCancelled() {
-    // Next student clicked 'I no longer need to leave'
-    const studentName = this.selectedStudent ? this.selectedStudent.name : 'Student';
+    const cancelledName = this.selectedStudent ? this.selectedStudent.name : 'Student';
     document.getElementById('next-student-modal')?.classList.add('hidden');
-    this.showToast(`${studentName} was removed from the wait list.`, 'info');
 
-    const nextInLine = this.queueManager.cancelPromptAndAdvance();
-    if (nextInLine) {
-      this.promptNextStudent(nextInLine);
+    this.showToast(`${cancelledName} cancelled. Advancing to next student in line.`, 'info');
+    const next = this.queueManager.cancelPromptAndAdvance();
+
+    if (next) {
+      setTimeout(() => this.promptNextStudent(next), 300);
     } else {
       this.updateState();
     }
+  }
+
+  // Toast notifications
+  showToast(message, type = 'info') {
+    const toast = document.getElementById('kiosk-toast');
+    if (!toast) return;
+
+    toast.textContent = message;
+    toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full text-sm font-bold shadow-2xl z-50 transition-all duration-300 ${
+      type === 'success' ? 'bg-emerald-700 text-white' : type === 'warning' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-white'
+    }`;
+    toast.classList.remove('hidden');
+
+    setTimeout(() => {
+      toast.classList.add('hidden');
+    }, 4000);
   }
 
   isModalOpen() {
@@ -2596,90 +2756,62 @@ class HallPassApp {
     return modals.length > 0;
   }
 
-  // Toast notification banner
-  showToast(message, type = 'info') {
-    const toast = document.getElementById('kiosk-toast');
-    if (!toast) return;
-    toast.textContent = message;
-    toast.className = `fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full text-sm font-bold shadow-2xl z-50 transition-all duration-300 ${type === 'success' ? 'bg-emerald-800 text-white' : type === 'warning' ? 'bg-amber-800 text-white' : 'bg-gray-900 text-white'}`;
-    toast.classList.remove('hidden');
-    setTimeout(() => {
-      toast.classList.add('hidden');
-    }, 4000);
-  }
-
-  // Screen Wake Lock API for iPads and Chromebooks
-  async initWakeLock() {
-    const settings = this.storage.getSettings();
-    if (settings.wakeLockEnabled === false) return;
-
-    if ('wakeLock' in navigator) {
-      try {
-        this.wakeLock = await navigator.wakeLock.request('screen');
-        document.addEventListener('visibilitychange', async () => {
-          if (this.wakeLock !== null && document.visibilityState === 'visible') {
-            this.wakeLock = await navigator.wakeLock.request('screen');
-          }
-        });
-      } catch (err) {
-        console.warn('Wake Lock request failed:', err);
-      }
-    }
-  }
-
-  // Time Simulator Controls
-  bindSimulatorEvents() {
+  // Time Machine / Simulation Bar controller
+  initSimulator() {
+    const toggleBarBtn = document.getElementById('btn-toggle-sim-bar');
     const simBar = document.getElementById('simulator-bar');
-    const btnToggleSim = document.getElementById('btn-toggle-sim-bar');
-    const simEnabledCheck = document.getElementById('sim-enabled-toggle');
+    const simToggle = document.getElementById('sim-enabled-toggle');
     const simTimeInput = document.getElementById('sim-time-input');
+    const badge = document.getElementById('sim-mode-badge');
 
-    if (btnToggleSim && simBar) {
-      btnToggleSim.addEventListener('click', () => {
+    if (toggleBarBtn && simBar) {
+      toggleBarBtn.addEventListener('click', () => {
         simBar.classList.toggle('hidden');
       });
     }
 
-    const simConfig = this.storage.getTimeSimulation();
-    if (simEnabledCheck) {
-      simEnabledCheck.checked = !!simConfig.enabled;
-      simEnabledCheck.addEventListener('change', (e) => {
-        simConfig.enabled = e.target.checked;
-        simConfig.simulatedTime = simTimeInput ? simTimeInput.value : '09:45';
-        this.storage.saveTimeSimulation(simConfig);
-        this.updateState();
+    const simState = this.storage.getTimeSimulation();
+    if (simToggle) {
+      simToggle.checked = !!simState.enabled;
+      simToggle.addEventListener('change', (e) => {
+        simState.enabled = e.target.checked;
+        this.storage.saveTimeSimulation(simState);
+        if (badge) badge.classList.toggle('hidden', !simState.enabled);
+        this.updateClockAndState();
       });
     }
 
     if (simTimeInput) {
-      simTimeInput.value = simConfig.simulatedTime || '09:45';
+      simTimeInput.value = simState.simulatedTime || '09:45';
       simTimeInput.addEventListener('change', (e) => {
-        simConfig.simulatedTime = e.target.value;
-        this.storage.saveTimeSimulation(simConfig);
-        this.updateState();
+        simState.simulatedTime = e.target.value;
+        this.storage.saveTimeSimulation(simState);
+        this.updateClockAndState();
       });
     }
 
-    // Scenario preset buttons
+    if (badge) badge.classList.toggle('hidden', !simState.enabled);
+
+    // Preset buttons
     document.querySelectorAll('.btn-sim-preset').forEach(btn => {
       btn.addEventListener('click', () => {
         const time = btn.dataset.time;
+        if (simToggle) simToggle.checked = true;
         if (simTimeInput) simTimeInput.value = time;
-        if (simEnabledCheck) simEnabledCheck.checked = true;
-        simConfig.enabled = true;
-        simConfig.simulatedTime = time;
-        this.storage.saveTimeSimulation(simConfig);
-        this.updateState();
+        simState.enabled = true;
+        simState.simulatedTime = time;
+        this.storage.saveTimeSimulation(simState);
+        if (badge) badge.classList.remove('hidden');
+        this.updateClockAndState();
       });
     });
   }
 }
 
-// Bootstrap app on DOM load
-window.addEventListener('DOMContentLoaded', () => {
-  const app = new HallPassApp();
-  window.hallPassApp = app;
-  app.init();
+// Auto-bootstrap when document is ready
+document.addEventListener('DOMContentLoaded', () => {
+  window.hallPassApp = new HallPassApp();
+  window.hallPassApp.init();
 });
 
 

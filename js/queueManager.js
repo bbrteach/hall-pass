@@ -62,7 +62,7 @@ export class QueueManager {
   }
 
   // Sign in / Return current student
-  signIn(overrideStatus = 'completed') {
+  signIn(overrideStatus = 'completed', isHoldActive = false) {
     const active = this.getActivePass();
     if (!active) {
       return { completedPass: null, nextInLine: null };
@@ -83,7 +83,14 @@ export class QueueManager {
 
     if (this.sounds) this.sounds.play('checkin');
 
-    // Check wait list
+    // If an emergency hold / pause / blackout is active, DO NOT pop from waitlist or allow another sign-out!
+    // Maintain the entire wait list and return nextInLine: null
+    if (isHoldActive) {
+      this.nextPromptStudent = null;
+      return { completedPass, nextInLine: null };
+    }
+
+    // Normal pass return: check wait list
     let nextInLine = null;
     const waitList = this.getWaitList();
     if (waitList.length > 0) {
@@ -153,7 +160,7 @@ export class QueueManager {
     return null;
   }
 
-  // Purge wait list (used when last 10 minutes begins or period changes)
+  // Purge wait list (used when last 10 minutes begins or school day concludes)
   purgeWaitList(reason = 'Dismissal / Blackout') {
     const waitList = this.getWaitList();
     const count = waitList.length;
@@ -166,7 +173,7 @@ export class QueueManager {
   }
 
   // Force return (teacher override)
-  forceReturn() {
-    return this.signIn('teacher_override');
+  forceReturn(isHoldActive = false) {
+    return this.signIn('teacher_override', isHoldActive);
   }
 }
