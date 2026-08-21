@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#10b981">
+  <title>Classroom Hall Pass Kiosk</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-emerald-600 text-white min-h-screen flex flex-col font-sans select-none overflow-x-hidden">
+  <header class="w-full bg-black/30 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-white/10 z-20">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-xl font-black">🎫</div>
+      <div>
+        <h1 class="text-base md:text-lg font-black leading-none text-white">Classroom Hall Pass</h1>
+        <div id="kiosk-period-label" class="text-xs text-white/80 font-semibold mt-0.5">Loading Schedule...</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <div id="sim-mode-badge" class="hidden px-2.5 py-0.5 bg-amber-400 text-amber-950 font-black text-xs rounded-full uppercase">⏱ Sim Mode</div>
+      <div id="kiosk-live-clock" class="text-lg md:text-2xl font-mono font-black text-white bg-black/40 px-3.5 py-1 rounded-xl border border-white/10">--:--:--</div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="btn-teacher-lock" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white text-xs font-bold transition border border-white/15">
+        <span>🔒</span>
+        <span class="hidden sm:inline">Teacher Dashboard</span>
+      </button>
+    </div>
+  </header>
+  <main class="flex-1 flex flex-col justify-center items-center p-4 md:p-8 relative">
+
+    <!-- 1. GREEN SCREEN -->
+    <div id="screen-green" class="w-full max-w-4xl mx-auto flex flex-col items-center justify-center text-center py-6 px-4">
+      <div class="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white/20 border border-white/30 backdrop-blur-sm mb-6">
+        <span class="w-3.5 h-3.5 rounded-full bg-white animate-ping"></span>
+        <span class="text-sm md:text-base font-black uppercase tracking-widest text-white">Hall Pass Available</span>
+      </div>
+      <h2 class="text-4xl md:text-6xl font-black text-white mb-4 drop-shadow-md">The Hall Pass is Ready</h2>
+      <p class="text-lg md:text-xl text-emerald-100 max-w-xl font-medium mb-10">No students are currently signed out. Tap the button below to take the pass.</p>
+      <button id="btn-green-signout" class="w-full max-w-lg py-6 md:py-8 px-8 bg-white hover:bg-emerald-50 text-emerald-800 hover:text-emerald-900 rounded-3xl font-black text-2xl md:text-3xl shadow-2xl transition-all duration-200 flex items-center justify-center gap-4 border-4 border-emerald-300/40">
+        <span class="text-3xl md:text-4xl">🏃‍♂️</span>
+        <span>Tap to Sign Out</span>
+      </button>
+      <p class="text-xs md:text-sm text-emerald-200/90 font-semibold mt-8 max-w-md">💡 Remember: Make your trip as quick as possible to respect classmates and minimize loss of instruction.</p>
+    </div>
+
+    <!-- 2. RED SCREEN -->
+    <div id="screen-red" class="hidden w-full max-w-4xl mx-auto flex flex-col items-center justify-center py-4 px-4">
+      <div class="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-white/20 border border-white/30 backdrop-blur-sm mb-4">
+        <span class="w-3.5 h-3.5 rounded-full bg-white animate-pulse"></span>
+        <span class="text-sm md:text-base font-black uppercase tracking-widest text-white">Hall Pass In Use</span>
+      </div>
+      <div class="w-full max-w-2xl bg-black/35 backdrop-blur-md rounded-3xl p-6 md:p-8 border border-white/20 shadow-2xl text-center mb-6">
+        <p class="text-sm md:text-base text-red-200 uppercase font-extrabold tracking-wider mb-1">The hall pass is currently signed out to:</p>
+        <h2 id="red-student-name" class="text-4xl md:text-6xl font-black text-white tracking-tight my-2 drop-shadow-md">Naomi</h2>
+        <div class="flex flex-wrap items-center justify-center gap-3 my-4">
+          <span class="px-4 py-1.5 rounded-xl bg-white/20 text-white font-black text-base md:text-lg border border-white/20">
+            📍 Destination: <span id="red-destination">LOCKER</span>
+          </span>
+          <span class="px-4 py-1.5 rounded-xl bg-black/40 text-amber-300 font-mono font-bold text-base md:text-lg border border-white/10">
+            ⏱ Elapsed: <span id="red-elapsed-timer">00:00</span>
+          </span>
+        </div>
+        <p id="red-emergency-notice" class="text-xs md:text-sm text-red-100/90 font-medium mt-4 bg-red-950/50 py-2.5 px-4 rounded-xl border border-red-400/20">
+          In case of an extreme emergency, please talk to Mr. Roberts or Mr. Hoerter.
+        </p>
+      </div>
+
+      <div class="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <button id="btn-red-signin" class="py-4 md:py-5 px-6 bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-white font-black text-lg md:text-xl rounded-2xl shadow-xl transition flex items-center justify-center gap-3 border-2 border-emerald-300/50">
+          <span class="text-2xl">📥</span>
+          <span id="btn-signin-student-name">I'm Back (Sign In)</span>
+        </button>
+        <button id="btn-red-waitlist" class="py-4 md:py-5 px-6 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-black text-lg md:text-xl rounded-2xl shadow-xl transition flex items-center justify-center gap-3 border-2 border-blue-300/50">
+          <span class="text-2xl">⏳</span>
+          <span>Add to Wait List</span>
+        </button>
+      </div>
+
+      <!-- UPCOMING WAIT LIST WIDGET -->
+      <div class="w-full max-w-2xl bg-black/25 rounded-2xl p-4 border border-white/10">
+        <div class="flex items-center justify-between pb-2 border-b border-white/10 mb-2">
+          <span class="text-xs font-black uppercase tracking-wider text-red-200">Upcoming Wait List</span>
+          <span id="red-waitlist-count" class="px-2.5 py-0.5 bg-red-950/60 text-white font-bold text-xs rounded-full">0 in line</span>
+        </div>
+        <div id="red-waitlist-items" class="space-y-1.5 max-h-36 overflow-y-auto pr-1"></div>
+      </div>
+    </div>
+
+    <!-- 3. BLACK SCREEN -->
+    <div id="screen-black" class="hidden w-full max-w-4xl mx-auto flex flex-col items-center justify-center text-center py-6 px-4">
+      <div class="w-20 h-20 rounded-3xl bg-neutral-900 border-2 border-neutral-700 flex items-center justify-center text-4xl shadow-2xl mb-6">🛑</div>
+      <h2 id="blackout-title" class="text-3xl md:text-5xl font-black text-white tracking-tight mb-3">Hall Passes Currently Unavailable</h2>
+      <div class="max-w-2xl bg-neutral-900/90 border border-neutral-800 rounded-2xl p-6 shadow-2xl mb-6 text-neutral-300">
+        <p id="blackout-reason" class="text-base md:text-lg font-medium leading-relaxed">No hall passes permitted at this time.</p>
+      </div>
+      <div id="blackout-active-student-box" class="hidden w-full max-w-lg bg-amber-950/60 border-2 border-amber-500/50 rounded-2xl p-5 mb-6 text-center">
+        <p class="text-xs font-bold uppercase text-amber-300 tracking-wider">Pass In Progress</p>
+        <h3 id="blackout-student-name" class="text-2xl font-black text-white my-1">Zoey</h3>
+        <p class="text-xs text-amber-200">Destination: <span id="blackout-destination">Restroom</span> • Elapsed: <span id="black-elapsed-timer" class="font-mono">00:00</span></p>
+        <button id="btn-blackout-signin" class="mt-4 w-full py-3.5 px-6 bg-emerald-600 hover:bg-emerald-500 font-black text-white text-base rounded-xl shadow-lg transition">
+          <span id="btn-blackout-signin-name">Zoey is Back / Sign In</span>
+        </button>
+      </div>
+      <button id="btn-blackout-waitlist" class="hidden py-4 md:py-5 px-8 bg-blue-600 hover:bg-blue-500 text-white font-black text-lg md:text-xl rounded-2xl shadow-xl transition border-2 border-blue-400/40">
+        + Add Name to Wait List for Next Open Time
+      </button>
+    </div>
+  </main>
+
+  <!-- MODAL: STUDENT NAME SELECTOR -->
+  <div id="student-picker-modal" class="modal-container hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white text-gray-900 w-full max-w-3xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-gray-100">
+      <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+        <h3 id="student-picker-title" class="text-xl font-black text-gray-900">Select Your Name</h3>
+        <button class="close-modal-btn w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold flex items-center justify-center">✕</button>
+      </div>
+      <div class="p-4 border-b border-gray-100 bg-white">
+        <input id="student-search-input" type="text" placeholder="🔍 Type your name to quickly filter..." class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 text-base font-semibold outline-none transition">
+      </div>
+      <div id="student-picker-list" class="flex-1 p-4 md:p-6 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: DESTINATION SELECTOR -->
+  <div id="destination-modal" class="modal-container hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white text-gray-900 w-full max-w-2xl rounded-3xl shadow-2xl p-6 md:p-8 max-h-[90vh] overflow-y-auto border border-gray-100">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <span class="text-xs font-black uppercase text-blue-600 tracking-wider">Step 2 of 3</span>
+          <h3 class="text-2xl font-black text-gray-900">Where are you going, <span id="destination-student-name" class="text-blue-600">Student</span>?</h3>
+        </div>
+        <button class="close-modal-btn w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold flex items-center justify-center">✕</button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 my-4">
+        <button class="destination-btn flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-gray-200 hover:border-emerald-500 hover:bg-emerald-50 transition active:scale-95" data-destination="Restroom">
+          <span class="text-3xl mb-1">🚻</span><span class="font-bold text-gray-800 text-sm">Restroom</span>
+        </button>
+        <button class="destination-btn flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 transition active:scale-95" data-destination="Water">
+          <span class="text-3xl mb-1">💧</span><span class="font-bold text-gray-800 text-sm">Water Fountain</span>
+        </button>
+        <button class="destination-btn flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-gray-200 hover:border-rose-500 hover:bg-rose-50 transition active:scale-95" data-destination="Nurse">
+          <span class="text-3xl mb-1">🩺</span><span class="font-bold text-gray-800 text-sm">Nurse</span>
+        </button>
+        <button class="destination-btn flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-gray-200 hover:border-purple-500 hover:bg-purple-50 transition active:scale-95" data-destination="Academy Hub">
+          <span class="text-3xl mb-1">🏫</span><span class="font-bold text-gray-800 text-sm">Academy Hub</span>
+        </button>
+        <button class="destination-btn flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-gray-200 hover:border-amber-500 hover:bg-amber-50 transition active:scale-95" data-destination="Counselor">
+          <span class="text-3xl mb-1">👥</span><span class="font-bold text-gray-800 text-sm">Counselor</span>
+        </button>
+        <button class="destination-btn flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-gray-200 hover:border-orange-500 hover:bg-orange-50 transition active:scale-95" data-destination="Locker">
+          <span class="text-3xl mb-1">🎒</span><span class="font-bold text-gray-800 text-sm">Locker</span>
+        </button>
+        <button class="destination-btn flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-gray-200 hover:border-indigo-500 hover:bg-indigo-50 transition active:scale-95" data-destination="teacher">
+          <span class="text-3xl mb-1">👩‍🏫</span><span class="font-bold text-gray-800 text-sm">Another Teacher</span>
+        </button>
+        <button class="destination-btn flex flex-col items-center justify-center p-4 rounded-2xl border-2 border-gray-200 hover:border-gray-500 hover:bg-gray-50 transition active:scale-95" data-destination="other">
+          <span class="text-3xl mb-1">✏️</span><span class="font-bold text-gray-800 text-sm">Other</span>
+        </button>
+      </div>
+
+      <div id="dest-teacher-input-box" class="hidden mt-4 p-4 bg-indigo-50 rounded-2xl border border-indigo-200">
+        <label class="block text-xs font-black uppercase text-indigo-900 mb-1">Which teacher are you visiting?</label>
+        <div class="flex gap-2">
+          <input id="input-dest-teacher" type="text" placeholder="Teacher's Name (e.g. Ms. Johnson)" class="flex-1 px-4 py-2.5 rounded-xl border border-indigo-300 text-sm font-semibold outline-none">
+          <button type="button" onclick="window.hallPassApp.handleConfirmSignOut()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm">Continue</button>
+        </div>
+      </div>
+
+      <div id="dest-custom-input-box" class="hidden mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-200">
+        <label class="block text-xs font-black uppercase text-gray-800 mb-1">Enter your destination:</label>
+        <div class="flex gap-2">
+          <input id="input-dest-custom" type="text" placeholder="Destination details" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold outline-none">
+          <button type="button" onclick="window.hallPassApp.handleConfirmSignOut()" class="px-5 py-2.5 bg-gray-800 hover:bg-black text-white font-bold rounded-xl text-sm">Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: COURTESY & RESPECT REMINDER -->
+  <div id="courtesy-modal" class="modal-container hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white text-gray-900 w-full max-w-lg rounded-3xl shadow-2xl p-6 md:p-8 text-center border border-gray-100">
+      <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 text-3xl flex items-center justify-center mx-auto mb-4">⏱</div>
+      <h3 class="text-2xl font-black text-gray-900 mb-2">Hall Pass Sign Out</h3>
+      <div class="bg-gray-50 border border-gray-200 rounded-2xl p-4 my-4 text-sm text-gray-700">
+        <p class="font-bold text-gray-900 text-base" id="courtesy-student-name">Student</p>
+        <p class="text-xs text-gray-500">Heading to: <strong id="courtesy-destination" class="text-gray-800">Restroom</strong></p>
+      </div>
+      <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl mb-6 text-emerald-950 text-sm font-semibold leading-relaxed" id="courtesy-message-text">
+        Please make your trip as quick as possible to respect classmates and minimize loss of instruction.
+      </div>
+      <div class="flex gap-3">
+        <button class="close-modal-btn flex-1 py-3.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl transition">Cancel</button>
+        <button id="btn-confirm-signout" class="flex-1 py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-lg transition">Confirm Sign Out</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: NEXT STUDENT IN QUEUE -->
+  <div id="next-student-modal" class="modal-container hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white text-gray-900 w-full max-w-lg rounded-3xl shadow-2xl p-6 md:p-8 text-center border-4 border-blue-400">
+      <div class="w-16 h-16 rounded-full bg-blue-100 text-blue-700 text-3xl flex items-center justify-center mx-auto mb-3 animate-bounce">🔔</div>
+      <span class="text-xs font-black uppercase text-blue-600 tracking-wider">Pass Returned</span>
+      <h3 class="text-3xl font-black text-gray-900 mt-1 mb-2"><span id="next-student-name" class="text-blue-600">Amari</span> is Up Next!</h3>
+      <p class="text-sm text-gray-600 mb-4">The hall pass is now available for you. Please choose your destination to sign out:</p>
+      <div class="text-left mb-4">
+        <label class="block text-xs font-bold text-gray-700 mb-1">Select Destination:</label>
+        <select id="next-student-destination-select" class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 font-bold text-gray-900 outline-none focus:border-blue-500">
+          <option value="Restroom">🚻 Restroom</option>
+          <option value="Water">💧 Water Fountain</option>
+          <option value="Nurse">🩺 Nurse</option>
+          <option value="Academy Hub">🏫 Academy Hub</option>
+          <option value="Counselor">👥 Counselor</option>
+          <option value="Locker">🎒 Locker</option>
+          <option value="Another Teacher">👩‍🏫 Another Teacher</option>
+          <option value="Other">✏️ Other</option>
+        </select>
+      </div>
+      <div class="p-3 bg-blue-50 border border-blue-100 rounded-xl mb-6 text-xs text-blue-900 font-medium">
+        💡 Please make your trip as quick as possible to respect classmates and minimize loss of instruction.
+      </div>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button id="btn-next-cancel" class="py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-sm transition">I no longer need to leave</button>
+        <button id="btn-next-signout" class="flex-1 py-3 px-6 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-base shadow-lg transition">Sign Out Now</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PIN PROMPT -->
+  <div id="pin-modal" class="modal-container hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white text-gray-900 w-full max-w-sm rounded-3xl shadow-2xl p-6 text-center border border-gray-100">
+      <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-700 text-2xl flex items-center justify-center mx-auto mb-3">🔒</div>
+      <h3 class="text-xl font-black text-gray-900 mb-1">Teacher Dashboard</h3>
+      <p class="text-xs text-gray-500 mb-4">Enter your PIN to access controls</p>
+      <form id="pin-modal-form" class="space-y-4">
+        <input id="pin-input" type="password" maxlength="6" pattern="[0-9]*" inputmode="numeric" placeholder="••••" class="w-full text-center tracking-[1em] text-3xl font-mono py-3 px-4 rounded-xl border-2 border-gray-200 focus:border-blue-500 outline-none">
+        <div id="pin-error" class="hidden text-xs text-rose-600 font-bold">Incorrect PIN. Default is 1234.</div>
+        <div class="flex gap-2">
+          <button type="button" onclick="document.getElementById('pin-modal').classList.add('hidden')" class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-sm">Cancel</button>
+          <button type="submit" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm">Unlock</button>
+        </div>
+        <p class="text-[10px] text-gray-400">Default PIN: 1234 (changeable in Settings)</p>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: TEACHER DASHBOARD -->
+  <div id="dashboard-modal" class="modal-container hidden fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-2 md:p-6">
+    <div class="bg-white text-gray-900 w-full max-w-6xl h-[94vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
+      
+      <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">📊</span>
+          <div>
+            <h2 class="text-lg font-black leading-tight">Teacher Control & Analytics Dashboard</h2>
+            <p class="text-xs text-slate-400">Manage schedules, blackouts, Google Sheets roster, and review statistics</p>
+          </div>
+        </div>
+        <button class="close-dashboard-btn w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center transition">✕</button>
+      </div>
+
+      <div class="flex border-b border-gray-200 bg-gray-50 px-6 overflow-x-auto">
+        <button class="dashboard-tab-btn px-4 py-3 border-b-2 border-blue-600 text-blue-600 font-bold text-sm whitespace-nowrap" data-tab="monitor">📡 Live Monitor</button>
+        <button class="dashboard-tab-btn px-4 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-900 text-sm font-semibold whitespace-nowrap" data-tab="analytics">📈 Data & Statistics</button>
+        <button class="dashboard-tab-btn px-4 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-900 text-sm font-semibold whitespace-nowrap" data-tab="schedules">⏰ Bell Schedules & Blackouts</button>
+        <button class="dashboard-tab-btn px-4 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-900 text-sm font-semibold whitespace-nowrap" data-tab="roster">👥 Roster & Google Sheets</button>
+        <button class="dashboard-tab-btn px-4 py-3 border-b-2 border-transparent text-gray-500 hover:text-gray-900 text-sm font-semibold whitespace-nowrap" data-tab="settings">⚙️ App Settings</button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-6 bg-slate-50">
+        
+        <!-- TAB 1: MONITOR -->
+        <div id="tab-panel-monitor" class="tab-content-panel space-y-6">
+          <div class="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+            <div>
+              <h3 class="font-black text-gray-900 text-lg">Emergency Controls</h3>
+              <p class="text-xs text-gray-500">Temporarily pause all hall passes for lockdowns, testing, or announcements</p>
+            </div>
+            <button id="btn-toggle-lockdown" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition text-sm">
+              Trigger Emergency Hold / Pause
+            </button>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <h3 class="font-black text-gray-900 text-base mb-3">Current Active Hall Pass</h3>
+            <div id="monitor-active-pass-box"></div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-black text-gray-900 text-base">Current Wait List Queue</h3>
+              <button id="btn-clear-waitlist" class="text-xs text-rose-600 hover:text-rose-800 font-bold px-3 py-1 bg-rose-50 hover:bg-rose-100 rounded-lg">Clear Wait List</button>
+            </div>
+            <div id="monitor-waitlist-box"></div>
+          </div>
+        </div>
+
+        <!-- TAB 2: ANALYTICS -->
+        <div id="tab-panel-analytics" class="tab-content-panel hidden space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+            <div class="flex items-center gap-3">
+              <div>
+                <label class="block text-[10px] font-black uppercase text-gray-400">Timeframe</label>
+                <select id="analytics-timeframe" class="border rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-800">
+                  <option value="today">Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+                  <option value="all">All Time</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-black uppercase text-gray-400">Class Period</label>
+                <select id="analytics-period-filter" class="border rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-800">
+                  <option value="all">All Periods</option>
+                  <option value="p1">1st Period</option>
+                  <option value="p2">2nd Period</option>
+                  <option value="p3">3rd Period</option>
+                  <option value="p4">4th Period</option>
+                  <option value="p5">5th Period</option>
+                  <option value="p6">6th Period</option>
+                  <option value="p7">7th Period</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="btn-export-history-csv" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-sm flex items-center gap-2">
+              <span>📥</span> Export Logs to CSV
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+              <span class="text-xs font-bold text-gray-500 uppercase">Total Passes</span>
+              <div id="stat-total-passes" class="text-2xl md:text-3xl font-black text-gray-900 mt-1">0</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+              <span class="text-xs font-bold text-gray-500 uppercase">Avg Duration</span>
+              <div id="stat-avg-duration" class="text-2xl md:text-3xl font-black text-blue-600 mt-1">0s</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+              <span class="text-xs font-bold text-gray-500 uppercase">Total Time Out</span>
+              <div id="stat-total-time" class="text-2xl md:text-3xl font-black text-amber-600 mt-1">0 min</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+              <span class="text-xs font-bold text-gray-500 uppercase">Top Destination</span>
+              <div id="stat-top-destination" class="text-2xl md:text-3xl font-black text-emerald-600 mt-1">Restroom</div>
+            </div>
+          </div>
+
+          <div class="bg-emerald-900 text-white p-5 rounded-2xl shadow-sm">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xl">🏆</span>
+              <h3 class="font-black text-base">Positive Reinforcement: Time Respect Champions</h3>
+            </div>
+            <p class="text-xs text-emerald-200 mb-3">Recognizing students and classes making quick, respectful trips to preserve instructional time:</p>
+            <div id="positive-champions-box"></div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <h3 class="font-black text-gray-900 text-base mb-3">Student Pass Breakdown & Patterns</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left">
+                <thead>
+                  <tr class="border-b border-gray-200 text-xs font-black uppercase text-gray-500">
+                    <th class="py-2 px-3">Student</th>
+                    <th class="py-2 px-3">Pass Count</th>
+                    <th class="py-2 px-3">Avg Duration</th>
+                    <th class="py-2 px-3">Total Minutes</th>
+                    <th class="py-2 px-3">Restrictions</th>
+                    <th class="py-2 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="analytics-student-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <h3 class="font-black text-gray-900 text-base mb-3">Class Period Comparison</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left">
+                <thead>
+                  <tr class="border-b border-gray-200 text-xs font-black uppercase text-gray-500">
+                    <th class="py-2 px-3">Period</th>
+                    <th class="py-2 px-3">Time Window</th>
+                    <th class="py-2 px-3">Pass Count</th>
+                    <th class="py-2 px-3">Avg Duration</th>
+                    <th class="py-2 px-3">Total Time Out</th>
+                  </tr>
+                </thead>
+                <tbody id="analytics-period-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <h3 class="font-black text-gray-900 text-base mb-3">Recent Pass Logs</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left">
+                <thead>
+                  <tr class="border-b border-gray-200 text-xs font-black uppercase text-gray-500">
+                    <th class="py-2 px-3">Date</th>
+                    <th class="py-2 px-3">Student</th>
+                    <th class="py-2 px-3">Period</th>
+                    <th class="py-2 px-3">Destination</th>
+                    <th class="py-2 px-3">Time Window</th>
+                    <th class="py-2 px-3">Duration</th>
+                    <th class="py-2 px-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="analytics-history-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: SCHEDULES -->
+        <div id="tab-panel-schedules" class="tab-content-panel hidden space-y-6">
+          <form id="schedules-form" class="space-y-6">
+            <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+              <h3 class="font-black text-gray-900 text-base mb-1">Global Blackout Rules</h3>
+              <p class="text-xs text-gray-500 mb-4">Set default rules applied automatically across every class period</p>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                  <label class="block font-bold text-gray-900 text-sm mb-1">First X Minutes Blackout</label>
+                  <div class="flex items-center gap-2 mb-2">
+                    <input id="input-first-minutes" type="number" min="0" max="30" class="w-20 border rounded-lg px-3 py-1.5 text-sm font-bold" value="10">
+                    <span class="text-sm text-gray-600">minutes of class</span>
+                  </div>
+                  <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                    <input id="input-first-waitlist" type="checkbox" class="rounded text-blue-600" checked>
+                    <span>Allow students to join wait list during first 10 minutes</span>
+                  </label>
+                </div>
+
+                <div class="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                  <label class="block font-bold text-gray-900 text-sm mb-1">Last Y Minutes Blackout</label>
+                  <div class="flex items-center gap-2 mb-2">
+                    <input id="input-last-minutes" type="number" min="0" max="30" class="w-20 border rounded-lg px-3 py-1.5 text-sm font-bold" value="10">
+                    <span class="text-sm text-gray-600">minutes of class</span>
+                  </div>
+                  <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                    <input id="input-last-purge" type="checkbox" class="rounded text-blue-600" checked>
+                    <span>Automatically clear wait list when last 10 minutes begins</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <label class="flex items-center gap-2 text-sm text-gray-800 font-semibold cursor-pointer">
+                  <input id="input-passing-blackout" type="checkbox" class="rounded text-blue-600" checked>
+                  <span>Blackout passes during passing periods between classes</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <h3 class="font-black text-gray-900 text-base">Class Bell Schedules</h3>
+                  <p class="text-xs text-gray-500">Configure period start and end times</p>
+                </div>
+                <button type="button" id="btn-add-period" class="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs rounded-lg transition">+ Add Period</button>
+              </div>
+              <div id="schedules-list" class="space-y-3"></div>
+            </div>
+
+            <div class="flex justify-end">
+              <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-md transition">Save Schedule & Blackout Settings</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- TAB 4: ROSTER -->
+        <div id="tab-panel-roster" class="tab-content-panel hidden space-y-6">
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="text-2xl">📗</span>
+              <div>
+                <h3 class="font-black text-gray-900 text-base">Google Sheets Live Roster Integration</h3>
+                <p class="text-xs text-gray-500">Sync student names and assigned periods directly from your Google Sheet</p>
+              </div>
+            </div>
+
+            <div class="space-y-3 mt-4">
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">Google Sheet URL or Published CSV Link:</label>
+                <div class="flex gap-2">
+                  <input id="input-google-sheet-url" type="url" placeholder="https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit" class="flex-1 px-4 py-2 border rounded-xl text-sm font-semibold outline-none focus:border-blue-500">
+                  <button type="button" id="btn-sync-sheets" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition">Sync Now</button>
+                </div>
+                <p id="sheet-sync-status" class="text-xs text-gray-500 mt-1">Last synced: <span id="label-last-sync">Never</span></p>
+              </div>
+
+              <div class="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
+                <strong>Expected Google Sheet Columns:</strong> <code class="bg-slate-200 px-1 py-0.5 rounded">Student Name</code>, <code class="bg-slate-200 px-1 py-0.5 rounded">Period</code> (e.g. 2nd Period), <code class="bg-slate-200 px-1 py-0.5 rounded">Restrictions</code> (optional), <code class="bg-slate-200 px-1 py-0.5 rounded">Notes</code> (optional).
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h4 class="font-bold text-gray-900 text-sm">Direct CSV Import / Export</h4>
+              <p class="text-xs text-gray-500">Upload a spreadsheet CSV file directly from your computer</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs cursor-pointer transition">
+                📁 Upload CSV
+                <input id="file-roster-csv" type="file" accept=".csv" class="hidden">
+              </label>
+              <button type="button" id="btn-download-template" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition">📄 Download Sample CSV Template</button>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <h4 class="font-bold text-gray-900 text-sm mb-3">Add Student Manually</h4>
+            <form id="form-add-student" class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+              <input id="input-student-name" type="text" placeholder="Student Name" required class="border rounded-xl px-3 py-2 text-sm font-semibold">
+              <select id="select-student-period" class="border rounded-xl px-3 py-2 text-sm font-semibold"></select>
+              <input id="input-student-restr" type="text" placeholder="Restrictions (optional)" class="border rounded-xl px-3 py-2 text-sm">
+              <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm py-2">+ Add to Roster</button>
+            </form>
+          </div>
+
+          <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+            <h3 class="font-black text-gray-900 text-base mb-3">Active Classroom Roster</h3>
+            <div class="overflow-x-auto max-h-80 overflow-y-auto">
+              <table class="w-full text-left">
+                <thead>
+                  <tr class="border-b border-gray-200 text-xs font-black uppercase text-gray-500">
+                    <th class="py-2 px-3">Name</th>
+                    <th class="py-2 px-3">Period</th>
+                    <th class="py-2 px-3">Restrictions</th>
+                    <th class="py-2 px-3">Notes</th>
+                    <th class="py-2 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="roster-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 5: SETTINGS -->
+        <div id="tab-panel-settings" class="tab-content-panel hidden space-y-6">
+          <form id="settings-form" class="space-y-6">
+            <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+              <h3 class="font-black text-gray-900 text-base">Customization & Contacts</h3>
+
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">Emergency Contact Teacher(s):</label>
+                <input id="input-emergency-teachers" type="text" value="Mr. Roberts or Mr. Hoerter" class="w-full px-4 py-2 border rounded-xl text-sm font-semibold">
+                <p class="text-[11px] text-gray-400 mt-0.5">Displayed on red kiosk screen: "In case of an extreme emergency, please talk to [Teachers]"</p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">Courtesy & Respect Message:</label>
+                <textarea id="input-courtesy-msg" rows="2" class="w-full px-4 py-2 border rounded-xl text-sm font-semibold">Please make your trip as quick as possible to respect classmates and minimize loss of instruction.</textarea>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-bold text-gray-700 mb-1">Teacher Dashboard PIN:</label>
+                  <input id="input-dashboard-pin" type="password" maxlength="6" value="1234" class="w-full px-4 py-2 border rounded-xl text-sm font-mono font-bold">
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-700 mb-1">Trip Warning Alert (Minutes):</label>
+                  <input id="input-max-duration" type="number" min="3" max="30" value="10" class="w-full px-4 py-2 border rounded-xl text-sm font-bold">
+                </div>
+              </div>
+
+              <div class="space-y-2 pt-2">
+                <label class="flex items-center gap-2 text-sm text-gray-800 font-semibold cursor-pointer">
+                  <input id="input-audio-enabled" type="checkbox" class="rounded text-blue-600" checked>
+                  <span>Enable gentle synthesized audio chimes on sign-out / sign-in</span>
+                </label>
+
+                <label class="flex items-center gap-2 text-sm text-gray-800 font-semibold cursor-pointer">
+                  <input id="input-wakelock-enabled" type="checkbox" class="rounded text-blue-600" checked>
+                  <span>Keep Screen Awake (Screen Wake Lock for iPad & Chromebook kiosk)</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <button type="button" id="btn-reset-defaults" class="px-4 py-2.5 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold rounded-xl text-xs transition">⚠️ Reset All to Factory Defaults</button>
+              <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-md transition">Save Settings</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM SIMULATOR BAR (TIME MACHINE) -->
+  <aside id="simulator-bar" class="hidden w-full bg-slate-950 text-white border-t border-slate-800 px-4 py-3 z-30 transition-all">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div class="flex items-center gap-3">
+        <span class="font-black text-amber-400 uppercase tracking-wider flex items-center gap-1">
+          <span>⏱</span> Time Machine / Schedule Simulator:
+        </span>
+        <label class="flex items-center gap-1.5 cursor-pointer font-bold">
+          <input id="sim-enabled-toggle" type="checkbox" class="rounded text-amber-500">
+          <span>Enable Simulation</span>
+        </label>
+        <input id="sim-time-input" type="time" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white font-mono">
+      </div>
+
+      <div class="flex flex-wrap items-center gap-1.5">
+        <span class="text-slate-400 font-medium">Quick Scenarios:</span>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:35">9:35 (P2 Start - 10m Blackout)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:39">9:39 (Naomi Waitlist)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-emerald-200 font-bold" data-time="09:45">9:45 (Flips Green)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-red-950 hover:bg-red-900 text-red-200 font-bold" data-time="09:46">9:46 (Naomi Out)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:48">9:48 (Amari Waitlist)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:51">9:51 (Naomi Returns)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-rose-950 hover:bg-rose-900 text-rose-200 font-bold" data-time="10:15">10:15 (Last 10m Blackout)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="10:25">10:25 (P2 Ends)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-emerald-200 font-bold" data-time="10:40">10:40 (P3 Green)</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- FOOTER BAR -->
+  <footer class="w-full bg-black/40 backdrop-blur-sm px-4 py-2 flex items-center justify-between text-[11px] text-white/70 border-t border-white/10 z-10">
+    <div class="flex items-center gap-3">
+      <span>Classroom Hall Pass Kiosk • Touch Optimized for iPad & Chromebook</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="btn-toggle-sim-bar" class="hover:text-white underline font-semibold flex items-center gap-1">
+        <span>⏱</span> Test Simulator Controls
+      </button>
+    </div>
+  </footer>
+
+  <div id="kiosk-toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full text-sm font-bold shadow-2xl z-50 transition-all duration-300"></div>
+
+  <!-- Application Bootstrap -->
+  <script src="js/bundle.js"></script>
+</body>
+</html>
