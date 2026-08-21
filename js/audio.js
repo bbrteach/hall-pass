@@ -7,9 +7,15 @@ class SoundEffects {
   }
 
   init() {
-    if (!this.audioCtx && (typeof window !== 'undefined') && (window.AudioContext || window.webkitAudioContext)) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      this.audioCtx = new AudioCtx();
+    if (!this.audioCtx && (typeof window !== 'undefined')) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          this.audioCtx = new AudioCtx();
+        }
+      } catch (e) {
+        console.warn('AudioContext creation note:', e);
+      }
     }
   }
 
@@ -19,7 +25,7 @@ class SoundEffects {
       this.init();
       if (!this.audioCtx) return;
       if (this.audioCtx.state === 'suspended') {
-        this.audioCtx.resume();
+        this.audioCtx.resume().catch(() => {});
       }
 
       const now = this.audioCtx.currentTime;
@@ -45,20 +51,23 @@ class SoundEffects {
   }
 
   createTone(freq, startTime, duration, type = 'sine', volume = 0.2) {
-    const osc = this.audioCtx.createOscillator();
-    const gain = this.audioCtx.createGain();
+    if (!this.audioCtx) return;
+    try {
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
 
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, startTime);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, startTime);
 
-    gain.gain.setValueAtTime(volume, startTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      gain.gain.setValueAtTime(volume, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
-    osc.connect(gain);
-    gain.connect(this.audioCtx.destination);
+      osc.connect(gain);
+      gain.connect(this.audioCtx.destination);
 
-    osc.start(startTime);
-    osc.stop(startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    } catch (e) {}
   }
 }
 

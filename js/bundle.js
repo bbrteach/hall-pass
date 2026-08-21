@@ -12,9 +12,15 @@ class SoundEffects {
   }
 
   init() {
-    if (!this.audioCtx && (typeof window !== 'undefined') && (window.AudioContext || window.webkitAudioContext)) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      this.audioCtx = new AudioCtx();
+    if (!this.audioCtx && (typeof window !== 'undefined')) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          this.audioCtx = new AudioCtx();
+        }
+      } catch (e) {
+        console.warn('AudioContext creation note:', e);
+      }
     }
   }
 
@@ -24,7 +30,7 @@ class SoundEffects {
       this.init();
       if (!this.audioCtx) return;
       if (this.audioCtx.state === 'suspended') {
-        this.audioCtx.resume();
+        this.audioCtx.resume().catch(() => {});
       }
 
       const now = this.audioCtx.currentTime;
@@ -50,20 +56,23 @@ class SoundEffects {
   }
 
   createTone(freq, startTime, duration, type = 'sine', volume = 0.2) {
-    const osc = this.audioCtx.createOscillator();
-    const gain = this.audioCtx.createGain();
+    if (!this.audioCtx) return;
+    try {
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
 
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, startTime);
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, startTime);
 
-    gain.gain.setValueAtTime(volume, startTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      gain.gain.setValueAtTime(volume, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
-    osc.connect(gain);
-    gain.connect(this.audioCtx.destination);
+      osc.connect(gain);
+      gain.connect(this.audioCtx.destination);
 
-    osc.start(startTime);
-    osc.stop(startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    } catch (e) {}
   }
 }
 
@@ -2057,20 +2066,38 @@ export class HallPassApp {
     this.updateState();
   }
 
-  // Request Screen Wake Lock so iPads / Chromebooks stay awake
-  async initWakeLock() {
-    const settings = this.storage.getSettings();
-    if (settings.wakeLockEnabled && 'wakeLock' in navigator) {
-      try {
-        this.wakeLock = await navigator.wakeLock.request('screen');
-        document.addEventListener('visibilitychange', async () => {
-          if (this.wakeLock !== null && document.visibilityState === 'visible') {
+  // Request Screen Wake Lock so iPads / Chromebooks stay awake (safe for iOS Safari)
+  initWakeLock() {
+    try {
+      const settings = this.storage.getSettings();
+      if (settings.wakeLockEnabled && typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+        const requestLock = async () => {
+          try {
             this.wakeLock = await navigator.wakeLock.request('screen');
+          } catch (err) {
+            // iOS Safari may reject until first user touch, which is expected
+          }
+        };
+
+        requestLock();
+
+        // Bind to first user gesture for iOS WebKit policy
+        const onFirstTouch = () => {
+          requestLock();
+          document.removeEventListener('touchstart', onFirstTouch);
+          document.removeEventListener('click', onFirstTouch);
+        };
+        document.addEventListener('touchstart', onFirstTouch, { passive: true });
+        document.addEventListener('click', onFirstTouch, { passive: true });
+
+        document.addEventListener('visibilitychange', () => {
+          if (this.wakeLock !== null && document.visibilityState === 'visible') {
+            requestLock();
           }
         });
-      } catch (err) {
-        console.log('Wake Lock request note:', err.message);
       }
+    } catch (e) {
+      console.warn('Wake Lock init note:', e);
     }
   }
 
@@ -2808,11 +2835,27 @@ export class HallPassApp {
   }
 }
 
-// Auto-bootstrap when document is ready
-document.addEventListener('DOMContentLoaded', () => {
-  window.hallPassApp = new HallPassApp();
-  window.hallPassApp.init();
-});
+// Universal resilient bootstrap for iPad Safari, Chrome, Edge, and all platforms
+function bootstrapHallPassApp() {
+  try {
+    if (!window.hallPassApp) {
+      window.hallPassApp = new HallPassApp();
+      window.hallPassApp.init();
+      console.log('Classroom Hall Pass App successfully booted on ' + (navigator.userAgent || 'client'));
+    }
+  } catch (err) {
+    console.error('Fatal initialization error:', err);
+  }
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrapHallPassApp);
+  } else {
+    // If DOM is already interactive/complete (common on iPad Safari network load), boot immediately
+    bootstrapHallPassApp();
+  }
+}
 
 
 })();

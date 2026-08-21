@@ -49,20 +49,38 @@ export class HallPassApp {
     this.updateState();
   }
 
-  // Request Screen Wake Lock so iPads / Chromebooks stay awake
-  async initWakeLock() {
-    const settings = this.storage.getSettings();
-    if (settings.wakeLockEnabled && 'wakeLock' in navigator) {
-      try {
-        this.wakeLock = await navigator.wakeLock.request('screen');
-        document.addEventListener('visibilitychange', async () => {
-          if (this.wakeLock !== null && document.visibilityState === 'visible') {
+  // Request Screen Wake Lock so iPads / Chromebooks stay awake (safe for iOS Safari)
+  initWakeLock() {
+    try {
+      const settings = this.storage.getSettings();
+      if (settings.wakeLockEnabled && typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+        const requestLock = async () => {
+          try {
             this.wakeLock = await navigator.wakeLock.request('screen');
+          } catch (err) {
+            // iOS Safari may reject until first user touch, which is expected
+          }
+        };
+
+        requestLock();
+
+        // Bind to first user gesture for iOS WebKit policy
+        const onFirstTouch = () => {
+          requestLock();
+          document.removeEventListener('touchstart', onFirstTouch);
+          document.removeEventListener('click', onFirstTouch);
+        };
+        document.addEventListener('touchstart', onFirstTouch, { passive: true });
+        document.addEventListener('click', onFirstTouch, { passive: true });
+
+        document.addEventListener('visibilitychange', () => {
+          if (this.wakeLock !== null && document.visibilityState === 'visible') {
+            requestLock();
           }
         });
-      } catch (err) {
-        console.log('Wake Lock request note:', err.message);
       }
+    } catch (e) {
+      console.warn('Wake Lock init note:', e);
     }
   }
 
@@ -800,8 +818,24 @@ export class HallPassApp {
   }
 }
 
-// Auto-bootstrap when document is ready
-document.addEventListener('DOMContentLoaded', () => {
-  window.hallPassApp = new HallPassApp();
-  window.hallPassApp.init();
-});
+// Universal resilient bootstrap for iPad Safari, Chrome, Edge, and all platforms
+function bootstrapHallPassApp() {
+  try {
+    if (!window.hallPassApp) {
+      window.hallPassApp = new HallPassApp();
+      window.hallPassApp.init();
+      console.log('Classroom Hall Pass App successfully booted on ' + (navigator.userAgent || 'client'));
+    }
+  } catch (err) {
+    console.error('Fatal initialization error:', err);
+  }
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrapHallPassApp);
+  } else {
+    // If DOM is already interactive/complete (common on iPad Safari network load), boot immediately
+    bootstrapHallPassApp();
+  }
+}
