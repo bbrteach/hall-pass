@@ -1,6 +1,19 @@
-// Classroom Hall Pass Kiosk - Standalone Universal Bundle
+// Classroom Hall Pass Kiosk - Standalone Universal Bundle (iPad & Safari Safe)
 (function() {
   'use strict';
+
+  // Global on-screen diagnostic handler for iPad / Mobile debugging
+  window.addEventListener('error', function(e) {
+    console.error('Kiosk runtime error:', e);
+    var errBox = document.getElementById('kiosk-fatal-error');
+    if (!errBox) {
+      errBox = document.createElement('div');
+      errBox.id = 'kiosk-fatal-error';
+      errBox.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#b91c1c;color:#ffffff;padding:12px;font-family:sans-serif;font-size:13px;font-weight:bold;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,0.5);text-align:center;';
+      document.body.appendChild(errBox);
+    }
+    errBox.innerHTML = '⚠️ Kiosk Startup Notice: ' + (e.message || 'Error loading application') + (e.lineno ? ' (Line ' + e.lineno + ')' : '');
+  });
 
   // --- AUDIO MODULE ---
   ﻿// Web Audio API Sound Generator for Classroom Hall Pass Kiosk
@@ -1555,11 +1568,14 @@ class TeacherDashboard {
             <button id="btn-force-return" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm">Force Return</button>
           </div>
         `;
-        document.getElementById('btn-force-return')?.addEventListener('click', () => {
-          this.queueManager.forceReturn();
-          this.renderMonitor();
-          window.dispatchEvent(new CustomEvent('hallpass:statechange'));
-        });
+        const btnForce = document.getElementById('btn-force-return');
+        if (btnForce) {
+          btnForce.addEventListener('click', () => {
+            this.queueManager.forceReturn();
+            this.renderMonitor();
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        }
       } else {
         activeBox.innerHTML = `
           <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-emerald-800 flex items-center justify-between">
@@ -2236,12 +2252,12 @@ export class HallPassApp {
         if (btnRedWaitlist) {
           if (settings.waitListEnabled !== false) {
             btnRedWaitlist.classList.remove('hidden');
-            redButtonsGrid?.classList.add('sm:grid-cols-2');
-            redButtonsGrid?.classList.remove('sm:grid-cols-1');
+            if (redButtonsGrid) redButtonsGrid.classList.add('sm:grid-cols-2');
+            if (redButtonsGrid) redButtonsGrid.classList.remove('sm:grid-cols-1');
           } else {
             btnRedWaitlist.classList.add('hidden');
-            redButtonsGrid?.classList.remove('sm:grid-cols-2');
-            redButtonsGrid?.classList.add('sm:grid-cols-1');
+            if (redButtonsGrid) redButtonsGrid.classList.remove('sm:grid-cols-2');
+            if (redButtonsGrid) redButtonsGrid.classList.add('sm:grid-cols-1');
           }
         }
 
@@ -2402,10 +2418,10 @@ export class HallPassApp {
       nextDestSelect.addEventListener('change', (e) => {
         const teacherBox = document.getElementById('next-dest-teacher-box');
         if (e.target.value === 'Another Teacher') {
-          teacherBox?.classList.remove('hidden');
-          document.getElementById('input-next-dest-teacher')?.focus();
+          if (teacherBox) teacherBox.classList.remove('hidden');
+          const nextTeacherInput = document.getElementById('input-next-dest-teacher'); if (nextTeacherInput) nextTeacherInput.focus();
         } else {
-          teacherBox?.classList.add('hidden');
+          if (teacherBox) teacherBox.classList.add('hidden');
         }
       });
     }
@@ -2549,7 +2565,7 @@ export class HallPassApp {
   // Handle student selected from picker
   handleStudentSelected(student) {
     this.selectedStudent = student;
-    document.getElementById('student-picker-modal')?.classList.add('hidden');
+    const pickerModal = document.getElementById('student-picker-modal'); if (pickerModal) pickerModal.classList.add('hidden');
 
     if (this.pickerMode === 'waitlist') {
       const evaluation = this.scheduleEngine.evaluate();
@@ -2577,8 +2593,8 @@ export class HallPassApp {
     if (studentLabel) studentLabel.textContent = this.selectedStudent ? this.selectedStudent.name : 'Student';
     
     // Reset custom inputs
-    document.getElementById('dest-teacher-input-box')?.classList.add('hidden');
-    document.getElementById('dest-custom-input-box')?.classList.add('hidden');
+    const tb = document.getElementById('dest-teacher-input-box'); if (tb) tb.classList.add('hidden');
+    const cb = document.getElementById('dest-custom-input-box'); if (cb) cb.classList.add('hidden');
     const inputT = document.getElementById('input-dest-teacher');
     const inputC = document.getElementById('input-dest-custom');
     if (inputT) inputT.value = '';
@@ -2589,18 +2605,18 @@ export class HallPassApp {
 
   handleDestinationSelected(dest) {
     if (dest === 'Another Teacher' || dest === 'teacher') {
-      document.getElementById('dest-custom-input-box')?.classList.add('hidden');
+      const cb = document.getElementById('dest-custom-input-box'); if (cb) cb.classList.add('hidden');
       const box = document.getElementById('dest-teacher-input-box');
-      box?.classList.remove('hidden');
-      document.getElementById('input-dest-teacher')?.focus();
+      if (box) box.classList.remove('hidden');
+      const it = document.getElementById('input-dest-teacher'); if (it) it.focus();
       return;
     }
 
     if (dest === 'Other' || dest === 'other') {
-      document.getElementById('dest-teacher-input-box')?.classList.add('hidden');
+      const tb = document.getElementById('dest-teacher-input-box'); if (tb) tb.classList.add('hidden');
       const box = document.getElementById('dest-custom-input-box');
-      box?.classList.remove('hidden');
-      document.getElementById('input-dest-custom')?.focus();
+      if (box) box.classList.remove('hidden');
+      const ic = document.getElementById('input-dest-custom'); if (ic) ic.focus();
       return;
     }
 
@@ -2614,7 +2630,7 @@ export class HallPassApp {
     const name = teacherInput ? teacherInput.value.trim() : '';
     if (!name) {
       alert('Please enter the name of the teacher you are visiting.');
-      teacherInput?.focus();
+      if (teacherInput) teacherInput.focus();
       return;
     }
     this.selectedDestination = 'Another Teacher';
@@ -2627,7 +2643,7 @@ export class HallPassApp {
     const desc = customInput ? customInput.value.trim() : '';
     if (!desc) {
       alert('Please enter your destination details.');
-      customInput?.focus();
+      if (customInput) customInput.focus();
       return;
     }
     this.selectedDestination = 'Other';
@@ -2636,7 +2652,7 @@ export class HallPassApp {
   }
 
   openCourtesyReminderModal() {
-    document.getElementById('destination-modal')?.classList.add('hidden');
+    const dm = document.getElementById('destination-modal'); if (dm) dm.classList.add('hidden');
     const modal = document.getElementById('courtesy-modal');
     const studentNameEl = document.getElementById('courtesy-student-name');
     const destEl = document.getElementById('courtesy-destination');
@@ -2661,7 +2677,7 @@ export class HallPassApp {
         this.selectedDestinationDetail,
         evaluation.currentPeriod
       );
-      document.getElementById('courtesy-modal')?.classList.add('hidden');
+      const cm = document.getElementById('courtesy-modal'); if (cm) cm.classList.add('hidden');
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();
     } catch (err) {
@@ -2705,7 +2721,7 @@ export class HallPassApp {
     // Reset destination choices on next prompt
     const destSelect = document.getElementById('next-student-destination-select');
     if (destSelect) destSelect.value = 'Restroom';
-    document.getElementById('next-dest-teacher-box')?.classList.add('hidden');
+    const ndt = document.getElementById('next-dest-teacher-box'); if (ndt) ndt.classList.add('hidden');
     const teacherInput = document.getElementById('input-next-dest-teacher');
     if (teacherInput) teacherInput.value = '';
 
@@ -2726,7 +2742,7 @@ export class HallPassApp {
       detail = teacherInput ? teacherInput.value.trim() : '';
       if (!detail) {
         alert('Please enter the name of the teacher you are visiting.');
-        teacherInput?.focus();
+        if (teacherInput) teacherInput.focus();
         return;
       }
     }
@@ -2739,7 +2755,7 @@ export class HallPassApp {
         detail,
         evaluation.currentPeriod
       );
-      document.getElementById('next-student-modal')?.classList.add('hidden');
+      const nsm = document.getElementById('next-student-modal'); if (nsm) nsm.classList.add('hidden');
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();
     } catch (err) {
@@ -2750,7 +2766,7 @@ export class HallPassApp {
   // Next student says "I no longer need to leave"
   handleNextStudentCancelled() {
     const cancelledName = this.selectedStudent ? this.selectedStudent.name : 'Student';
-    document.getElementById('next-student-modal')?.classList.add('hidden');
+    const nsm = document.getElementById('next-student-modal'); if (nsm) nsm.classList.add('hidden');
 
     this.showToast(`${cancelledName} cancelled. Advancing to next student in line.`, 'info');
     const next = this.queueManager.cancelPromptAndAdvance();

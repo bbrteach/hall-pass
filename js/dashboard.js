@@ -250,11 +250,14 @@ export class TeacherDashboard {
             <button id="btn-force-return" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm">Force Return</button>
           </div>
         `;
-        document.getElementById('btn-force-return')?.addEventListener('click', () => {
-          this.queueManager.forceReturn();
-          this.renderMonitor();
-          window.dispatchEvent(new CustomEvent('hallpass:statechange'));
-        });
+        const btnForce = document.getElementById('btn-force-return');
+        if (btnForce) {
+          btnForce.addEventListener('click', () => {
+            this.queueManager.forceReturn();
+            this.renderMonitor();
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        }
       } else {
         activeBox.innerHTML = `
           <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-emerald-800 flex items-center justify-between">
