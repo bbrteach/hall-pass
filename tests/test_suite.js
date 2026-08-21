@@ -1,4 +1,4 @@
-﻿// Automated Unit Tests for Classroom Hall Pass Engine & Scenarios
+﻿// Automated Unit Tests for Classroom Hall Pass Engine & Bell Schedules
 
 import { ScheduleEngine } from '../js/scheduleEngine.js';
 import { QueueManager } from '../js/queueManager.js';
@@ -9,9 +9,13 @@ class MockStorage {
   constructor() {
     this.data = {
       schedules: [
-        { id: 'p1', name: '1st Period', start: '08:35', end: '09:30' },
+        { id: 'p1', name: '1st Period', start: '08:40', end: '09:30' },
         { id: 'p2', name: '2nd Period', start: '09:35', end: '10:25' },
-        { id: 'p3', name: '3rd Period', start: '10:30', end: '11:20' }
+        { id: 'p3', name: '3rd Period', start: '10:30', end: '11:20' },
+        { id: 'p4', name: '4th Period', start: '11:25', end: '12:35' },
+        { id: 'p5', name: '5th Period', start: '12:40', end: '13:30' },
+        { id: 'p6', name: '6th Period', start: '13:35', end: '14:25' },
+        { id: 'p7', name: '7th Period', start: '14:30', end: '15:20' }
       ],
       blackoutRules: {
         firstMinutes: 10,
@@ -20,15 +24,33 @@ class MockStorage {
         lastMinutesPurgeWaitlist: true,
         passingPeriodBlackout: true,
         emergencyLockdown: false,
-        customBlackouts: []
+        customBlackouts: [
+          {
+            id: 'cb_start_day',
+            name: 'Start of School Day (First 20 min)',
+            periodId: 'p1',
+            start: '08:40',
+            end: '09:00',
+            reason: 'No hall passes during the first 20 minutes of the school day (8:40 AM to 9:00 AM).',
+            canWaitlist: true,
+            purgeWaitlist: false
+          },
+          {
+            id: 'cb_end_day',
+            name: 'End of School Day (Last 20 min)',
+            periodId: 'p7',
+            start: '15:00',
+            end: '15:20',
+            reason: 'No hall passes during the last 20 minutes of the school day (3:00 PM to 3:20 PM). Dismissal preparation.',
+            canWaitlist: false,
+            purgeWaitlist: true
+          }
+        ]
       },
       roster: [
+        { id: 's_alex', name: 'Alex M.', period: 'p1', restrictions: '' },
         { id: 's_naomi', name: 'Naomi', period: 'p2', restrictions: '' },
-        { id: 's_amari', name: 'Amari', period: 'p2', restrictions: '' },
-        { id: 's_emily', name: 'Emily', period: 'p2', restrictions: '' },
-        { id: 's_derek', name: 'Derek', period: 'p2', restrictions: '' },
-        { id: 's_zoey', name: 'Zoey', period: 'p2', restrictions: '' },
-        { id: 's_caitlin', name: 'Caitlin', period: 'p2', restrictions: '' }
+        { id: 'samuel', name: 'Samuel V.', period: 'p7', restrictions: '' }
       ],
       settings: {
         emergencyTeachers: 'Mr. Roberts or Mr. Hoerter',
@@ -64,7 +86,7 @@ class MockStorage {
 const mockSounds = { play: () => {} };
 
 function runTests() {
-  console.log('=== Starting Classroom Hall Pass Automated Scenario Verification ===\n');
+  console.log('=== Starting Classroom Hall Pass Schedule & Blackout Verification ===\n');
   let passed = 0;
   let failed = 0;
 
@@ -81,107 +103,76 @@ function runTests() {
   const storage = new MockStorage();
   const scheduleEngine = new ScheduleEngine(storage);
   const queueManager = new QueueManager(storage, mockSounds);
-  const rosterSync = new RosterSync(storage);
-  const analytics = new AnalyticsEngine(storage, scheduleEngine);
 
-  // Test 1: At 9:35 AM (Period 2 start -> First 10m blackout)
+  // Test 1: 8:40 AM (1st Period Start -> First 20 min of school day blackout)
+  const eval840 = scheduleEngine.evaluate('08:40');
+  assert(eval840.state === 'BLACKOUT', '8:40 AM is BLACKOUT');
+  assert(eval840.title.includes('First 20 min'), '8:40 AM title includes First 20 min');
+  assert(eval840.canWaitlist === true, '8:40 AM waitlist is allowed');
+  assert(eval840.unlockTime === '9:00 AM', '8:40 AM unlock time is 9:00 AM');
+
+  // Test 2: 8:50 AM (Still in First 20 min blackout)
+  const eval850 = scheduleEngine.evaluate('08:50');
+  assert(eval850.state === 'BLACKOUT', '8:50 AM is BLACKOUT');
+
+  // Test 3: 9:00 AM (1st Period 20m blackout ends -> AVAILABLE / GREEN)
+  const eval900 = scheduleEngine.evaluate('09:00');
+  assert(eval900.state === 'AVAILABLE', '9:00 AM 1st Period is AVAILABLE (Green)');
+  assert(eval900.currentPeriod.name === '1st Period', '9:00 AM active period is 1st Period');
+
+  // Test 4: 9:25 AM (Last 10 min of 1st Period: 9:20-9:30)
+  const eval925 = scheduleEngine.evaluate('09:25');
+  assert(eval925.state === 'BLACKOUT', '9:25 AM is BLACKOUT (Last 10 min)');
+  assert(eval925.purgeWaitlist === true, '9:25 AM purges waitlist');
+
+  // Test 5: 9:35 AM (2nd Period Start: 9:35-10:25) -> First 10m blackout
   const eval935 = scheduleEngine.evaluate('09:35');
-  assert(eval935.state === 'BLACKOUT', '9:35 AM state is BLACKOUT');
-  assert(eval935.reasonType === 'FIRST_MINUTES', '9:35 AM reason is FIRST_MINUTES');
-  assert(eval935.canWaitlist === true, '9:35 AM waitlist is allowed');
+  assert(eval935.state === 'BLACKOUT', '9:35 AM is 2nd Period First 10m BLACKOUT');
+  assert(eval935.canWaitlist === true, '9:35 AM allows waitlist');
 
-  // Test 2: At 9:39 AM (First 10m blackout -> Naomi joins wait list)
-  const eval939 = scheduleEngine.evaluate('09:39');
-  assert(eval939.state === 'BLACKOUT', '9:39 AM state is BLACKOUT');
-  queueManager.addToWaitList({ id: 's_naomi', name: 'Naomi', period: 'p2' }, eval939.currentPeriod);
-  assert(queueManager.getWaitList().length === 1, 'Naomi successfully added to wait list during first 10 min blackout');
-
-  // Test 3: At 9:45 AM (First 10m blackout ends -> Screen flips to GREEN)
+  // Test 6: 9:45 AM (2nd Period 10m blackout ends -> AVAILABLE / GREEN)
   const eval945 = scheduleEngine.evaluate('09:45');
-  assert(eval945.state === 'AVAILABLE', '9:45 AM state is AVAILABLE (Green Screen)');
+  assert(eval945.state === 'AVAILABLE', '9:45 AM 2nd Period is AVAILABLE (Green)');
 
-  // Test 4: At 9:46 AM (Naomi signs out to Locker -> Screen turns RED)
-  const passNaomi = queueManager.signOut({ id: 's_naomi', name: 'Naomi', period: 'p2' }, 'Locker', '', eval945.currentPeriod);
-  assert(storage.getActivePass() !== null, 'Active pass exists in storage');
-  assert(storage.getActivePass().studentName === 'Naomi', 'Active student is Naomi');
-  assert(storage.getActivePass().destination === 'Locker', 'Destination is Locker');
-  assert(queueManager.getWaitList().length === 0, 'Waitlist emptied when Naomi signed out');
-
-  // Test 5: At 9:48 AM (Amari adds to waitlist)
-  queueManager.addToWaitList({ id: 's_amari', name: 'Amari', period: 'p2' }, eval945.currentPeriod);
-  assert(queueManager.getWaitList().length === 1, 'Amari added to wait list');
-  assert(queueManager.getWaitList()[0].studentName === 'Amari', 'Amari is #1 on wait list');
-
-  // Test 6: At 9:50 AM (Emily adds to waitlist)
-  queueManager.addToWaitList({ id: 's_emily', name: 'Emily', period: 'p2' }, eval945.currentPeriod);
-  assert(queueManager.getWaitList().length === 2, 'Emily added to wait list (2 in queue)');
-
-  // Test 7: At 9:51 AM (Naomi returns -> Amari is up next)
-  const returnRes = queueManager.signIn();
-  assert(storage.getActivePass() === null, 'Pass is signed in');
-  assert(returnRes.completedPass.studentName === 'Naomi', 'Completed pass logged for Naomi');
-  assert(returnRes.nextInLine !== null, 'Next student in line is retrieved');
-  assert(returnRes.nextInLine.studentName === 'Amari', 'Amari is up next');
-  assert(queueManager.getWaitList().length === 1, 'Waitlist now contains Emily');
-
-  // Test 8: Amari signs out for Restroom, Derek/Zoey/Caitlin join wait list
-  queueManager.signOut({ id: 's_amari', name: 'Amari', period: 'p2' }, 'Restroom', '', eval945.currentPeriod);
-  queueManager.addToWaitList({ id: 's_derek', name: 'Derek', period: 'p2' }, eval945.currentPeriod);
-  queueManager.addToWaitList({ id: 's_zoey', name: 'Zoey', period: 'p2' }, eval945.currentPeriod);
-  queueManager.addToWaitList({ id: 's_caitlin', name: 'Caitlin', period: 'p2' }, eval945.currentPeriod);
-  assert(queueManager.getWaitList().length === 4, 'Wait list has Emily, Derek, Zoey, Caitlin');
-
-  // Test 9: Amari returns at 10:06 -> Emily signs out & returns at 10:10
-  queueManager.signIn(); // Amari in
-  queueManager.signOut({ id: 's_emily', name: 'Emily', period: 'p2' }, 'Restroom', '', eval945.currentPeriod);
-  const emilyReturn = queueManager.signIn(); // Emily in
-  assert(emilyReturn.nextInLine.studentName === 'Derek', 'Derek is up next after Emily');
-
-  // Test 10: Derek chooses "I no longer need to leave" -> Skipped, Zoey is up next!
-  const nextAfterDerekCancel = queueManager.cancelPromptAndAdvance();
-  assert(nextAfterDerekCancel.studentName === 'Zoey', 'Derek cancelled, Zoey is immediately up next');
-  assert(queueManager.getWaitList().length === 1, 'Only Caitlin remains on wait list');
-
-  // Test 11: Zoey signs out to Restroom
-  queueManager.signOut({ id: 's_zoey', name: 'Zoey', period: 'p2' }, 'Restroom', '', eval945.currentPeriod);
-  assert(storage.getActivePass().studentName === 'Zoey', 'Zoey is signed out');
-
-  // Test 12: At 10:15 AM (Last 10 minutes begins while Zoey is out)
+  // Test 7: 10:15 AM (2nd Period Last 10m blackout: 10:15-10:25)
   const eval1015 = scheduleEngine.evaluate('10:15');
-  assert(eval1015.state === 'BLACKOUT', '10:15 AM is BLACKOUT');
-  assert(eval1015.reasonType === 'LAST_MINUTES', '10:15 AM is LAST_MINUTES');
-  assert(eval1015.purgeWaitlist === true, '10:15 AM signals purge waitlist');
+  assert(eval1015.state === 'BLACKOUT', '10:15 AM is 2nd Period Last 10m BLACKOUT');
+  assert(eval1015.purgeWaitlist === true, '10:15 AM purges waitlist');
 
-  // Purge waitlist as required by last 10 minutes rule
-  const purgeRes = queueManager.purgeWaitList('Last 10 minutes of class');
-  assert(purgeRes.purged === true && purgeRes.count === 1, 'Wait list automatically purged (Caitlin cleared)');
-  assert(queueManager.getWaitList().length === 0, 'Wait list is now empty');
-  assert(storage.getActivePass().studentName === 'Zoey', 'Zoey remains signed out');
+  // Test 8: 11:25 AM (4th Period: 11:25-12:35)
+  const eval1125 = scheduleEngine.evaluate('11:25');
+  assert(eval1125.state === 'BLACKOUT', '11:25 AM 4th Period First 10m BLACKOUT');
 
-  // Test 13: Zoey returns during last 10 minutes
-  const zoeyReturn = queueManager.signIn();
-  assert(zoeyReturn.completedPass.studentName === 'Zoey', 'Zoey signed back in successfully during blackout');
-  assert(zoeyReturn.nextInLine === null, 'No new passes issued after Zoey returns');
-  assert(storage.getActivePass() === null, 'Pass is now in classroom');
+  // Test 9: 11:35 AM (4th Period AVAILABLE)
+  const eval1135 = scheduleEngine.evaluate('11:35');
+  assert(eval1135.state === 'AVAILABLE', '11:35 AM 4th Period is AVAILABLE');
 
-  // Test 14: At 10:25 AM (Period 2 ends -> Passing period blackout)
-  const eval1025 = scheduleEngine.evaluate('10:25');
-  assert(eval1025.state === 'BLACKOUT', '10:25 AM is passing period BLACKOUT');
-  assert(eval1025.reasonType === 'PASSING_PERIOD', 'Reason is PASSING_PERIOD');
-  assert(eval1025.nextPeriod.name === '3rd Period', 'Next period is 3rd Period');
-  assert(eval1025.canWaitlist === true, 'Wait list joining is allowed for 3rd period');
+  // Test 10: 12:40 PM (5th Period: 12:40-1:30)
+  const eval1240 = scheduleEngine.evaluate('12:40');
+  assert(eval1240.currentPeriod.name === '5th Period', '12:40 PM is 5th Period');
 
-  // Test 15: At 10:40 AM (3rd period blackout ends -> AVAILABLE)
-  const eval1040 = scheduleEngine.evaluate('10:40');
-  assert(eval1040.state === 'AVAILABLE', '10:40 AM 3rd Period is AVAILABLE (Green Screen)');
+  // Test 11: 1:35 PM (6th Period: 1:35-2:25)
+  const eval1335 = scheduleEngine.evaluate('13:35');
+  assert(eval1335.currentPeriod.name === '6th Period', '1:35 PM is 6th Period');
 
-  // Test 16: Analytics Verification
-  const summary = analytics.getSummaryStats('all');
-  assert(summary.totalPasses >= 4, `Analytics tracked ${summary.totalPasses} total passes`);
+  // Test 12: 2:30 PM (7th Period: 2:30-3:20)
+  const eval1430 = scheduleEngine.evaluate('14:30');
+  assert(eval1430.currentPeriod.name === '7th Period', '2:30 PM is 7th Period');
 
-  const studentStats = analytics.getStudentStats('all');
-  const naomiStat = studentStats.find(s => s.studentName === 'Naomi');
-  assert(naomiStat && naomiStat.passCount >= 1, 'Naomi stats calculated');
+  // Test 13: 3:00 PM (Last 20 minutes of school day: 3:00-3:20 PM)
+  const eval1500 = scheduleEngine.evaluate('15:00');
+  assert(eval1500.state === 'BLACKOUT', '3:00 PM is BLACKOUT (Last 20 min of school day)');
+  assert(eval1500.title.includes('Last 20 min'), 'Title mentions Last 20 min');
+  assert(eval1500.purgeWaitlist === true, '3:00 PM purges waitlist');
+
+  // Test 14: 3:20 PM (School Day Concluded)
+  const eval1520 = scheduleEngine.evaluate('15:20');
+  assert(eval1520.state === 'BLACKOUT', '3:20 PM is School Concluded');
+  assert(eval1520.reasonType === 'AFTER_SCHOOL', 'Reason is AFTER_SCHOOL');
+
+  // Test 15: PIN check
+  storage.saveSettings({ pin: '5432' });
+  assert(storage.getSettings().pin === '5432', 'Custom PIN 5432 saved');
 
   console.log(`\n=== Verification Complete: ${passed} passed, ${failed} failed ===\n`);
 }

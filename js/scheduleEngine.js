@@ -1,4 +1,4 @@
-﻿// Schedule & Blackout Engine for Classroom Hall Pass Kiosk
+// Schedule & Blackout Engine for Classroom Hall Pass Kiosk
 
 export class ScheduleEngine {
   constructor(storage) {
@@ -231,19 +231,23 @@ export class ScheduleEngine {
     const minsFromStart = currentMins - startM;
     const minsUntilEnd = endM - currentMins;
 
-    // Check Custom Blackouts (e.g. Lunch, Testing)
+    // Check Custom Blackouts (e.g. Start/End of Day, Lunch, Testing)
     if (blackoutRules.customBlackouts && blackoutRules.customBlackouts.length > 0) {
       for (const cb of blackoutRules.customBlackouts) {
         const cbStart = this.timeToMinutes(cb.start);
         const cbEnd = this.timeToMinutes(cb.end);
         if (currentMins >= cbStart && currentMins < cbEnd) {
+          const unlockTimeStr = this.formatTime12Hour(cb.end);
+          const canWaitlist = cb.canWaitlist !== undefined ? cb.canWaitlist : false;
+          const purgeWaitlist = cb.purgeWaitlist !== undefined ? cb.purgeWaitlist : true;
           return {
             state: 'BLACKOUT',
             reasonType: 'CUSTOM_BLACKOUT',
             title: cb.name || 'Hall Pass Restricted',
             reason: cb.reason || 'Hall passes are not allowed during this scheduled window.',
-            canWaitlist: false,
-            purgeWaitlist: true,
+            canWaitlist: canWaitlist,
+            unlockTime: unlockTimeStr,
+            purgeWaitlist: purgeWaitlist,
             currentPeriod,
             timeStr,
             formattedTime: this.formatTime12Hour(timeStr),

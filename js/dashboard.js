@@ -1,4 +1,4 @@
-﻿// Teacher Dashboard Controller
+// Teacher Dashboard Controller
 
 export class TeacherDashboard {
   constructor(storage, scheduleEngine, queueManager, rosterSync, analyticsEngine, sounds) {
@@ -135,7 +135,14 @@ export class TeacherDashboard {
     const modal = document.getElementById('pin-modal');
     const input = document.getElementById('pin-input');
     const error = document.getElementById('pin-error');
+    const hint = document.getElementById('pin-hint-text');
+    const settings = this.storage.getSettings();
+    const currentPin = (settings.pin || '1234').trim();
+
     if (error) error.classList.add('hidden');
+    if (hint) {
+      hint.textContent = currentPin === '1234' ? 'Default PIN: 1234 (changeable in Settings)' : 'Enter your custom PIN to unlock';
+    }
     if (input) input.value = '';
     if (modal) modal.classList.remove('hidden');
     if (input) setTimeout(() => input.focus(), 100);
@@ -151,13 +158,14 @@ export class TeacherDashboard {
     const error = document.getElementById('pin-error');
     const settings = this.storage.getSettings();
     const entered = (input ? input.value : '').trim();
+    const currentPin = (settings.pin || '1234').trim();
 
-    if (entered === settings.pin || entered === '1234') {
+    if (entered === currentPin) {
       this.closePinModal();
       this.openDashboard();
     } else {
       if (error) {
-        error.textContent = 'Incorrect PIN. Default is 1234.';
+        error.textContent = currentPin === '1234' ? 'Incorrect PIN. Default is 1234.' : 'Incorrect PIN. Please try again.';
         error.classList.remove('hidden');
       }
       if (this.sounds) this.sounds.play('warning');

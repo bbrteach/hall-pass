@@ -95,16 +95,29 @@ const STORAGE_KEYS = {
   TIME_SIMULATION: 'time_simulation'
 };
 
+// Default Bell Schedules as requested:
+// 1st Period: 8:40 to 9:30
+// 2nd Period: 9:35 to 10:25
+// 3rd Period: 10:30 to 11:20
+// 4th Period: 11:25 to 12:35
+// 5th Period: 12:40 to 1:30
+// 6th Period: 1:35 to 2:25
+// 7th Period: 2:30 to 3:20
 const DEFAULT_SCHEDULES = [
-  { id: 'p1', name: '1st Period', start: '08:35', end: '09:30' },
+  { id: 'p1', name: '1st Period', start: '08:40', end: '09:30' },
   { id: 'p2', name: '2nd Period', start: '09:35', end: '10:25' },
   { id: 'p3', name: '3rd Period', start: '10:30', end: '11:20' },
-  { id: 'p4', name: '4th Period', start: '11:25', end: '12:45' },
-  { id: 'p5', name: '5th Period', start: '12:50', end: '13:40' },
-  { id: 'p6', name: '6th Period', start: '13:45', end: '14:35' },
-  { id: 'p7', name: '7th Period', start: '14:40', end: '15:30' }
+  { id: 'p4', name: '4th Period', start: '11:25', end: '12:35' },
+  { id: 'p5', name: '5th Period', start: '12:40', end: '13:30' },
+  { id: 'p6', name: '6th Period', start: '13:35', end: '14:25' },
+  { id: 'p7', name: '7th Period', start: '14:30', end: '15:20' }
 ];
 
+// Default Blackout Rules:
+// - First 10 minutes of each class
+// - First 20 minutes of school day (8:40 to 9:00 am)
+// - Last 20 minutes of school day (3:00 to 3:20 pm)
+// - Last 10 minutes of regular classes
 const DEFAULT_BLACKOUT_RULES = {
   firstMinutes: 10,
   firstMinutesWaitlistAllowed: true,
@@ -115,17 +128,37 @@ const DEFAULT_BLACKOUT_RULES = {
   lockdownReason: '',
   customBlackouts: [
     {
-      id: 'cb_lunch',
-      name: '4th Period Lunch Blackout',
-      periodId: 'p4',
-      start: '11:45',
-      end: '12:15',
-      reason: 'No hall passes during 4th period lunch'
+      id: 'cb_start_day',
+      name: 'Start of School Day (First 20 min)',
+      periodId: 'p1',
+      start: '08:40',
+      end: '09:00',
+      reason: 'No hall passes during the first 20 minutes of the school day (8:40 AM to 9:00 AM).',
+      canWaitlist: true,
+      purgeWaitlist: false
+    },
+    {
+      id: 'cb_end_day',
+      name: 'End of School Day (Last 20 min)',
+      periodId: 'p7',
+      start: '15:00',
+      end: '15:20',
+      reason: 'No hall passes during the last 20 minutes of the school day (3:00 PM to 3:20 PM). Dismissal preparation.',
+      canWaitlist: false,
+      purgeWaitlist: true
     }
   ]
 };
 
 const DEFAULT_ROSTER = [
+  // 1st Period
+  { id: 's_alex', name: 'Alex M.', period: 'p1', restrictions: '', notes: '' },
+  { id: 's_ben', name: 'Benjamin K.', period: 'p1', restrictions: '', notes: '' },
+  { id: 's_chloe', name: 'Chloe T.', period: 'p1', restrictions: '', notes: '' },
+  { id: 's_david', name: 'David R.', period: 'p1', restrictions: '', notes: '' },
+  { id: 's_elena', name: 'Elena V.', period: 'p1', restrictions: '', notes: '' },
+
+  // 2nd Period
   { id: 's_naomi', name: 'Naomi', period: 'p2', restrictions: '', notes: 'Honor Roll' },
   { id: 's_amari', name: 'Amari', period: 'p2', restrictions: '', notes: '' },
   { id: 's_emily', name: 'Emily', period: 'p2', restrictions: '', notes: '' },
@@ -137,21 +170,29 @@ const DEFAULT_ROSTER = [
   { id: 's_lucas', name: 'Lucas', period: 'p2', restrictions: '', notes: '' },
   { id: 's_maya', name: 'Maya', period: 'p2', restrictions: '', notes: '' },
 
-  { id: 's_alex', name: 'Alex M.', period: 'p1', restrictions: '', notes: '' },
-  { id: 's_ben', name: 'Benjamin K.', period: 'p1', restrictions: '', notes: '' },
-  { id: 's_chloe', name: 'Chloe T.', period: 'p1', restrictions: '', notes: '' },
-  { id: 's_david', name: 'David R.', period: 'p1', restrictions: '', notes: '' },
-  { id: 's_elena', name: 'Elena V.', period: 'p1', restrictions: '', notes: '' },
-
+  // 3rd Period
   { id: 's_ethan', name: 'Ethan W.', period: 'p3', restrictions: '', notes: '' },
   { id: 's_grace', name: 'Grace H.', period: 'p3', restrictions: '', notes: '' },
   { id: 's_isaac', name: 'Isaac B.', period: 'p3', restrictions: '', notes: '' },
   { id: 's_jasmine', name: 'Jasmine L.', period: 'p3', restrictions: '', notes: '' },
   { id: 's_kyle', name: 'Kyle N.', period: 'p3', restrictions: '', notes: '' },
 
+  // 4th Period
   { id: 's_liam', name: 'Liam S.', period: 'p4', restrictions: '', notes: '' },
   { id: 's_mia', name: 'Mia D.', period: 'p4', restrictions: '', notes: '' },
-  { id: 's_noah', name: 'Noah C.', period: 'p4', restrictions: '', notes: '' }
+  { id: 's_noah', name: 'Noah C.', period: 'p4', restrictions: '', notes: '' },
+
+  // 5th Period
+  { id: 's_oliver', name: 'Oliver P.', period: 'p5', restrictions: '', notes: '' },
+  { id: 's_penelope', name: 'Penelope G.', period: 'p5', restrictions: '', notes: '' },
+
+  // 6th Period
+  { id: 's_quinn', name: 'Quinn T.', period: 'p6', restrictions: '', notes: '' },
+  { id: 's_riley', name: 'Riley M.', period: 'p6', restrictions: '', notes: '' },
+
+  // 7th Period
+  { id: 's_samuel', name: 'Samuel V.', period: 'p7', restrictions: '', notes: '' },
+  { id: 's_tara', name: 'Tara B.', period: 'p7', restrictions: '', notes: '' }
 ];
 
 const DEFAULT_SETTINGS = {
@@ -180,20 +221,6 @@ const SAMPLE_HISTORY = [
     signOutTime: new Date(Date.now() - 7200000).toISOString(),
     returnTime: new Date(Date.now() - 7200000 + 240000).toISOString(),
     durationSeconds: 240,
-    date: new Date().toISOString().split('T')[0],
-    status: 'completed'
-  },
-  {
-    id: 'pass_sample_2',
-    studentId: 's_chloe',
-    studentName: 'Chloe T.',
-    periodId: 'p1',
-    periodName: '1st Period',
-    destination: 'water',
-    destinationDetail: '',
-    signOutTime: new Date(Date.now() - 6600000).toISOString(),
-    returnTime: new Date(Date.now() - 6600000 + 120000).toISOString(),
-    durationSeconds: 120,
     date: new Date().toISOString().split('T')[0],
     status: 'completed'
   }
@@ -313,7 +340,6 @@ class StorageManager {
     this.set(STORAGE_KEYS.TIME_SIMULATION, sim);
   }
 
-  // Export full classroom profile as a portable JSON object
   exportConfigJson() {
     return JSON.stringify({
       version: '1.0',
@@ -324,7 +350,6 @@ class StorageManager {
     }, null, 2);
   }
 
-  // Import a shared classroom profile
   importConfigJson(jsonString) {
     try {
       const parsed = JSON.parse(jsonString);
@@ -353,7 +378,7 @@ const storage = new StorageManager();
 
 
   // --- SCHEDULE ENGINE ---
-  ﻿// Schedule & Blackout Engine for Classroom Hall Pass Kiosk
+  // Schedule & Blackout Engine for Classroom Hall Pass Kiosk
 
 class ScheduleEngine {
   constructor(storage) {
@@ -586,19 +611,23 @@ class ScheduleEngine {
     const minsFromStart = currentMins - startM;
     const minsUntilEnd = endM - currentMins;
 
-    // Check Custom Blackouts (e.g. Lunch, Testing)
+    // Check Custom Blackouts (e.g. Start/End of Day, Lunch, Testing)
     if (blackoutRules.customBlackouts && blackoutRules.customBlackouts.length > 0) {
       for (const cb of blackoutRules.customBlackouts) {
         const cbStart = this.timeToMinutes(cb.start);
         const cbEnd = this.timeToMinutes(cb.end);
         if (currentMins >= cbStart && currentMins < cbEnd) {
+          const unlockTimeStr = this.formatTime12Hour(cb.end);
+          const canWaitlist = cb.canWaitlist !== undefined ? cb.canWaitlist : false;
+          const purgeWaitlist = cb.purgeWaitlist !== undefined ? cb.purgeWaitlist : true;
           return {
             state: 'BLACKOUT',
             reasonType: 'CUSTOM_BLACKOUT',
             title: cb.name || 'Hall Pass Restricted',
             reason: cb.reason || 'Hall passes are not allowed during this scheduled window.',
-            canWaitlist: false,
-            purgeWaitlist: true,
+            canWaitlist: canWaitlist,
+            unlockTime: unlockTimeStr,
+            purgeWaitlist: purgeWaitlist,
             currentPeriod,
             timeStr,
             formattedTime: this.formatTime12Hour(timeStr),
@@ -1257,7 +1286,7 @@ class AnalyticsEngine {
 
 
   // --- TEACHER DASHBOARD ---
-  ﻿// Teacher Dashboard Controller
+  // Teacher Dashboard Controller
 
 class TeacherDashboard {
   constructor(storage, scheduleEngine, queueManager, rosterSync, analyticsEngine, sounds) {
@@ -1394,7 +1423,14 @@ class TeacherDashboard {
     const modal = document.getElementById('pin-modal');
     const input = document.getElementById('pin-input');
     const error = document.getElementById('pin-error');
+    const hint = document.getElementById('pin-hint-text');
+    const settings = this.storage.getSettings();
+    const currentPin = (settings.pin || '1234').trim();
+
     if (error) error.classList.add('hidden');
+    if (hint) {
+      hint.textContent = currentPin === '1234' ? 'Default PIN: 1234 (changeable in Settings)' : 'Enter your custom PIN to unlock';
+    }
     if (input) input.value = '';
     if (modal) modal.classList.remove('hidden');
     if (input) setTimeout(() => input.focus(), 100);
@@ -1410,13 +1446,14 @@ class TeacherDashboard {
     const error = document.getElementById('pin-error');
     const settings = this.storage.getSettings();
     const entered = (input ? input.value : '').trim();
+    const currentPin = (settings.pin || '1234').trim();
 
-    if (entered === settings.pin || entered === '1234') {
+    if (entered === currentPin) {
       this.closePinModal();
       this.openDashboard();
     } else {
       if (error) {
-        error.textContent = 'Incorrect PIN. Default is 1234.';
+        error.textContent = currentPin === '1234' ? 'Incorrect PIN. Default is 1234.' : 'Incorrect PIN. Please try again.';
         error.classList.remove('hidden');
       }
       if (this.sounds) this.sounds.play('warning');

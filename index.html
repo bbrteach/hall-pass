@@ -241,7 +241,7 @@
           <button type="button" onclick="document.getElementById('pin-modal').classList.add('hidden')" class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-sm">Cancel</button>
           <button type="submit" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm">Unlock</button>
         </div>
-        <p class="text-[10px] text-gray-400">Default PIN: 1234 (changeable in Settings)</p>
+        <p id="pin-hint-text" class="text-[10px] text-gray-400">Default PIN: 1234 (changeable in Settings)</p>
       </form>
     </div>
   </div>
@@ -612,15 +612,16 @@
 
       <div class="flex flex-wrap items-center gap-1.5">
         <span class="text-slate-400 font-medium">Quick Scenarios:</span>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:35">9:35 (P2 Start - 10m Blackout)</button>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:39">9:39 (Naomi Waitlist)</button>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-emerald-200 font-bold" data-time="09:45">9:45 (Flips Green)</button>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-red-950 hover:bg-red-900 text-red-200 font-bold" data-time="09:46">9:46 (Naomi Out)</button>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:48">9:48 (Amari Waitlist)</button>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:51">9:51 (Naomi Returns)</button>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-rose-950 hover:bg-rose-900 text-rose-200 font-bold" data-time="10:15">10:15 (Last 10m Blackout)</button>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="10:25">10:25 (P2 Ends)</button>
-        <button class="btn-sim-preset px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-emerald-200 font-bold" data-time="10:40">10:40 (P3 Green)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-rose-950 hover:bg-rose-900 text-rose-200" data-time="08:40">8:40 (1st Period - First 20m Blackout)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="08:50">8:50 (Waitlist for 9:00)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-emerald-200 font-bold" data-time="09:00">9:00 (1st Period Green)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="09:35">9:35 (2nd Period Start)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-emerald-200 font-bold" data-time="09:45">9:45 (2nd Period Green)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-rose-950 hover:bg-rose-900 text-rose-200 font-bold" data-time="10:15">10:15 (2nd Period Last 10m)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="11:25">11:25 (4th Period)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="12:40">12:40 (5th Period)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-rose-950 hover:bg-rose-900 text-rose-200 font-bold" data-time="15:00">3:00 PM (Last 20m Blackout)</button>
+        <button class="btn-sim-preset px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200" data-time="15:20">3:20 PM (Dismissal)</button>
       </div>
     </div>
   </aside>
