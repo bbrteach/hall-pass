@@ -138,22 +138,7 @@ const DEFAULT_SETTINGS = {
   courtesyMessage: 'Please make your trip as quick as possible to respect classmates and minimize loss of instruction.'
 };
 
-const SAMPLE_HISTORY = [
-  {
-    id: 'pass_sample_1',
-    studentId: 's_alex',
-    studentName: 'Alex M.',
-    periodId: 'p1',
-    periodName: '1st Period',
-    destination: 'restroom',
-    destinationDetail: '',
-    signOutTime: new Date(Date.now() - 7200000).toISOString(),
-    returnTime: new Date(Date.now() - 7200000 + 240000).toISOString(),
-    durationSeconds: 240,
-    date: new Date().toISOString().split('T')[0],
-    status: 'completed'
-  }
-];
+const SAMPLE_HISTORY = [];
 
 class StorageManager {
   constructor() {
@@ -247,11 +232,16 @@ class StorageManager {
   }
 
   getHistory() {
-    return this.get(STORAGE_KEYS.HISTORY, SAMPLE_HISTORY);
+    const history = this.get(STORAGE_KEYS.HISTORY, []);
+    return history.filter(h => h && h.studentId !== 's_alex' && h.studentName !== 'Alex M.' && h.id !== 'pass_sample_1');
   }
 
   saveHistory(history, source = 'local') {
     this.set(STORAGE_KEYS.HISTORY, history, source);
+  }
+
+  clearHistory() {
+    this.saveHistory([]);
   }
 
   addHistoryRecord(record) {

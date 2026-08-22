@@ -94,6 +94,17 @@ export class TeacherDashboard {
       exportHistoryBtn.addEventListener('click', () => this.exportHistory());
     }
 
+    const clearHistoryBtn = document.getElementById('btn-clear-history-logs');
+    if (clearHistoryBtn) {
+      clearHistoryBtn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear all pass logs and placeholder test history?')) {
+          this.storage.clearHistory();
+          this.renderAnalytics();
+          alert('Pass history logs have been cleared.');
+        }
+      });
+    }
+
     const settingsForm = document.getElementById('settings-form');
     if (settingsForm) {
       settingsForm.addEventListener('submit', (e) => {
@@ -268,7 +279,7 @@ export class TeacherDashboard {
 
     if (activeBox) {
       if (activePass) {
-        const elapsedSec = Math.round((Date.now() - activePass.signOutTime) / 1000);
+        const elapsedSec = Math.max(0, Math.round((Date.now() - activePass.signOutTime) / 1000));
         activeBox.innerHTML = `
           <div class="bg-red-50 border-2 border-red-200 p-4 rounded-xl flex items-center justify-between">
             <div>

@@ -32,7 +32,7 @@ export class ScheduleEngine {
 
   // Format seconds to 'Xm Ys' or '0s'
   formatDuration(seconds) {
-    if (!seconds && seconds !== 0) return '0s';
+    seconds = Math.max(0, Math.round(Number(seconds) || 0));
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     if (m === 0) return `${s}s`;
@@ -41,6 +41,7 @@ export class ScheduleEngine {
 
   // Format timer 'MM:SS'
   formatDurationTimer(seconds) {
+    seconds = Math.max(0, Math.round(Number(seconds) || 0));
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;

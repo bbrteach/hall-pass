@@ -235,22 +235,7 @@ const DEFAULT_SETTINGS = {
   courtesyMessage: 'Please make your trip as quick as possible to respect classmates and minimize loss of instruction.'
 };
 
-const SAMPLE_HISTORY = [
-  {
-    id: 'pass_sample_1',
-    studentId: 's_alex',
-    studentName: 'Alex M.',
-    periodId: 'p1',
-    periodName: '1st Period',
-    destination: 'restroom',
-    destinationDetail: '',
-    signOutTime: new Date(Date.now() - 7200000).toISOString(),
-    returnTime: new Date(Date.now() - 7200000 + 240000).toISOString(),
-    durationSeconds: 240,
-    date: new Date().toISOString().split('T')[0],
-    status: 'completed'
-  }
-];
+const SAMPLE_HISTORY = [];
 
 class StorageManager {
   constructor() {
@@ -344,11 +329,16 @@ class StorageManager {
   }
 
   getHistory() {
-    return this.get(STORAGE_KEYS.HISTORY, SAMPLE_HISTORY);
+    const history = this.get(STORAGE_KEYS.HISTORY, []);
+    return history.filter(h => h && h.studentId !== 's_alex' && h.studentName !== 'Alex M.' && h.id !== 'pass_sample_1');
   }
 
   saveHistory(history, source = 'local') {
     this.set(STORAGE_KEYS.HISTORY, history, source);
+  }
+
+  clearHistory() {
+    this.saveHistory([]);
   }
 
   addHistoryRecord(record) {
@@ -442,7 +432,7 @@ class ScheduleEngine {
 
   // Format seconds to 'Xm Ys' or '0s'
   formatDuration(seconds) {
-    if (!seconds && seconds !== 0) return '0s';
+    seconds = Math.max(0, Math.round(Number(seconds) || 0));
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     if (m === 0) return `${s}s`;
@@ -451,6 +441,7 @@ class ScheduleEngine {
 
   // Format timer 'MM:SS'
   formatDurationTimer(seconds) {
+    seconds = Math.max(0, Math.round(Number(seconds) || 0));
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
@@ -1587,6 +1578,12 @@ class CloudSyncEngine {
     this.isApplyingRemote = true;
     try {
       if (remotePayload.activePass !== undefined) {
+        if (remotePayload.activePass && remotePayload.activePass.signOutTime) {
+          // Normalize signOutTime to this receiving device's local clock frame
+          const remoteTimestamp = remotePayload.timestamp || Date.now();
+          const elapsedMs = Math.max(0, remoteTimestamp - remotePayload.activePass.signOutTime);
+          remotePayload.activePass.signOutTime = Date.now() - elapsedMs;
+        }
         this.storage.saveActivePass(remotePayload.activePass, 'remote');
       }
       if (remotePayload.waitList !== undefined) {
@@ -1738,6 +1735,17 @@ class TeacherDashboard {
     const exportHistoryBtn = document.getElementById('btn-export-history-csv');
     if (exportHistoryBtn) {
       exportHistoryBtn.addEventListener('click', () => this.exportHistory());
+    }
+
+    const clearHistoryBtn = document.getElementById('btn-clear-history-logs');
+    if (clearHistoryBtn) {
+      clearHistoryBtn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear all pass logs and placeholder test history?')) {
+          this.storage.clearHistory();
+          this.renderAnalytics();
+          alert('Pass history logs have been cleared.');
+        }
+      });
     }
 
     const settingsForm = document.getElementById('settings-form');
@@ -1914,7 +1922,7 @@ class TeacherDashboard {
 
     if (activeBox) {
       if (activePass) {
-        const elapsedSec = Math.round((Date.now() - activePass.signOutTime) / 1000);
+        const elapsedSec = Math.max(0, Math.round((Date.now() - activePass.signOutTime) / 1000));
         activeBox.innerHTML = `
           <div class="bg-red-50 border-2 border-red-200 p-4 rounded-xl flex items-center justify-between">
             <div>

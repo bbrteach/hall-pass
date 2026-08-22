@@ -262,6 +262,12 @@ export class CloudSyncEngine {
     this.isApplyingRemote = true;
     try {
       if (remotePayload.activePass !== undefined) {
+        if (remotePayload.activePass && remotePayload.activePass.signOutTime) {
+          // Normalize signOutTime to this receiving device's local clock frame
+          const remoteTimestamp = remotePayload.timestamp || Date.now();
+          const elapsedMs = Math.max(0, remoteTimestamp - remotePayload.activePass.signOutTime);
+          remotePayload.activePass.signOutTime = Date.now() - elapsedMs;
+        }
         this.storage.saveActivePass(remotePayload.activePass, 'remote');
       }
       if (remotePayload.waitList !== undefined) {
