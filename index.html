@@ -3576,6 +3576,14 @@ class HallPassApp {
       }
       this.showToast(`❌ Pass request for ${pendingApproval.studentName} was denied by teacher.`, 'error');
       this.storage.savePendingApproval(null);
+
+      // Advance to the next student on the wait list (e.g. Ciara)
+      const currentWaitList = this.queueManager.getWaitList();
+      if (currentWaitList.length > 0) {
+        const next = currentWaitList.shift();
+        this.storage.saveWaitList(currentWaitList);
+        setTimeout(() => this.promptNextStudent(next), 400);
+      }
     }
 
     this.previousState = evaluation.state;
@@ -3734,7 +3742,16 @@ class HallPassApp {
         const modal = document.getElementById('approval-wait-modal');
         if (modal) modal.classList.add('hidden');
         this.showToast('Pass request cancelled.', 'info');
-        this.updateState();
+
+        // Advance to the next student in line (e.g. Ciara)
+        const waitList = this.queueManager.getWaitList();
+        if (waitList.length > 0) {
+          const next = waitList.shift();
+          this.storage.saveWaitList(waitList);
+          setTimeout(() => this.promptNextStudent(next), 300);
+        } else {
+          this.updateState();
+        }
       });
     }
 
@@ -3797,6 +3814,17 @@ class HallPassApp {
     if (mode === 'waitlist' && settings.waitListEnabled === false) {
       this.showToast('Wait list is currently disabled in teacher settings.', 'warning');
       return;
+    }
+
+    // If students are waiting on the wait list, prompt the next in line rather than allowing walk-ups to jump the line
+    if (mode === 'signout' && settings.waitListEnabled !== false) {
+      const waitList = this.queueManager.getWaitList();
+      if (waitList.length > 0) {
+        const next = waitList.shift();
+        this.storage.saveWaitList(waitList);
+        this.promptNextStudent(next);
+        return;
+      }
     }
 
     this.pickerMode = mode;
