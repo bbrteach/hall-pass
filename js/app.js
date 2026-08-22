@@ -502,7 +502,7 @@ export class HallPassApp {
         const pin = prompt('Teacher Authorization: Enter your PIN to approve this pass:');
         if (pin) {
           const settings = this.storage.getSettings();
-          const correctPin = String(settings.teacherPin !== undefined ? settings.teacherPin : '1234');
+          const correctPin = String(settings.pin || settings.teacherPin || '1234').trim();
           if (pin.trim() === correctPin) {
             const req = this.storage.getPendingApproval();
             if (req) {

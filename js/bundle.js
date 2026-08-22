@@ -1573,6 +1573,7 @@ class CloudSyncEngine {
         blackoutRules: this.storage.getBlackoutRules(),
         schedules: this.storage.getSchedules(),
         roster: this.storage.getRoster(),
+        settings: this.storage.getSettings(),
         pendingApproval: this.storage.getPendingApproval(),
         timeSimulation: this.storage.getTimeSimulation(),
         history: this.storage.getHistory().slice(0, 20)
@@ -1614,6 +1615,9 @@ class CloudSyncEngine {
       }
       if (remotePayload.roster !== undefined && Array.isArray(remotePayload.roster) && remotePayload.roster.length > 0) {
         this.storage.saveRoster(remotePayload.roster, 'remote');
+      }
+      if (remotePayload.settings !== undefined && typeof remotePayload.settings === 'object' && remotePayload.settings !== null) {
+        this.storage.saveSettings(remotePayload.settings, 'remote');
       }
       if (remotePayload.timeSimulation !== undefined) {
         this.storage.saveTimeSimulation(remotePayload.timeSimulation, 'remote');
@@ -2507,6 +2511,7 @@ class TeacherDashboard {
     }
 
     this.storage.saveSettings(settings);
+    if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
     if (this.sounds) this.sounds.enabled = settings.audioEnabled;
 
     alert('Settings saved successfully!');
@@ -3011,7 +3016,7 @@ class HallPassApp {
         const pin = prompt('Teacher Authorization: Enter your PIN to approve this pass:');
         if (pin) {
           const settings = this.storage.getSettings();
-          const correctPin = String(settings.teacherPin !== undefined ? settings.teacherPin : '1234');
+          const correctPin = String(settings.pin || settings.teacherPin || '1234').trim();
           if (pin.trim() === correctPin) {
             const req = this.storage.getPendingApproval();
             if (req) {

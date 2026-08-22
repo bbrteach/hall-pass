@@ -847,6 +847,7 @@ export class TeacherDashboard {
     }
 
     this.storage.saveSettings(settings);
+    if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
     if (this.sounds) this.sounds.enabled = settings.audioEnabled;
 
     alert('Settings saved successfully!');
