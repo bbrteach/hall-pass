@@ -240,7 +240,7 @@ export class ScheduleEngine {
         if (currentMins >= cbStart && currentMins < cbEnd) {
           const unlockTimeStr = this.formatTime12Hour(cb.end);
           const canWaitlist = cb.canWaitlist !== undefined ? cb.canWaitlist : false;
-          const purgeWaitlist = cb.purgeWaitlist !== undefined ? cb.purgeWaitlist : true;
+          const purgeWaitlist = cb.purgeWaitlist !== undefined ? cb.purgeWaitlist : false;
           return {
             state: 'BLACKOUT',
             reasonType: 'CUSTOM_BLACKOUT',
@@ -289,7 +289,7 @@ export class ScheduleEngine {
         title: `Last ${lastMinutes} Minutes of ${currentPeriod.name}`,
         reason: `No additional hall passes permitted in the last ${lastMinutes} minutes of class (dismissal preparation).`,
         canWaitlist: false,
-        purgeWaitlist: false,
+        purgeWaitlist: true, // Wait list clears specifically for the last minutes of class / dismissal
         currentPeriod,
         timeStr,
         formattedTime: this.formatTime12Hour(timeStr),

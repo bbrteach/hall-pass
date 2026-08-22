@@ -651,7 +651,7 @@ class ScheduleEngine {
         if (currentMins >= cbStart && currentMins < cbEnd) {
           const unlockTimeStr = this.formatTime12Hour(cb.end);
           const canWaitlist = cb.canWaitlist !== undefined ? cb.canWaitlist : false;
-          const purgeWaitlist = cb.purgeWaitlist !== undefined ? cb.purgeWaitlist : true;
+          const purgeWaitlist = cb.purgeWaitlist !== undefined ? cb.purgeWaitlist : false;
           return {
             state: 'BLACKOUT',
             reasonType: 'CUSTOM_BLACKOUT',
@@ -700,7 +700,7 @@ class ScheduleEngine {
         title: `Last ${lastMinutes} Minutes of ${currentPeriod.name}`,
         reason: `No additional hall passes permitted in the last ${lastMinutes} minutes of class (dismissal preparation).`,
         canWaitlist: false,
-        purgeWaitlist: false,
+        purgeWaitlist: true, // Wait list clears specifically for the last minutes of class / dismissal
         currentPeriod,
         timeStr,
         formattedTime: this.formatTime12Hour(timeStr),
@@ -2692,9 +2692,13 @@ class HallPassApp {
     const waitList = this.queueManager.getWaitList();
     const settings = this.storage.getSettings();
 
-    // Check Auto-Purge Waitlist flag (e.g. Last 10 minutes begins or school day concludes)
+    // Check Auto-Purge Waitlist flag (specifically when the last 10 minutes begins)
     if (evaluation.purgeWaitlist && (waitList.length > 0 || this.queueManager.nextPromptStudent)) {
       this.queueManager.purgeWaitList('Last 10 minutes / Dismissal blackout');
+      const nsm = document.getElementById('next-student-modal'); if (nsm) nsm.classList.add('hidden');
+      const awm = document.getElementById('approval-wait-modal'); if (awm) awm.classList.add('hidden');
+      const dm = document.getElementById('destination-modal'); if (dm) dm.classList.add('hidden');
+      const spm = document.getElementById('student-picker-modal'); if (spm) spm.classList.add('hidden');
       this.showToast('Wait list cleared for end-of-class dismissal preparation.', 'info');
     }
 

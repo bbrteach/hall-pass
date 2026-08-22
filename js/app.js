@@ -183,9 +183,13 @@ export class HallPassApp {
     const waitList = this.queueManager.getWaitList();
     const settings = this.storage.getSettings();
 
-    // Check Auto-Purge Waitlist flag (e.g. Last 10 minutes begins or school day concludes)
+    // Check Auto-Purge Waitlist flag (specifically when the last 10 minutes begins)
     if (evaluation.purgeWaitlist && (waitList.length > 0 || this.queueManager.nextPromptStudent)) {
       this.queueManager.purgeWaitList('Last 10 minutes / Dismissal blackout');
+      const nsm = document.getElementById('next-student-modal'); if (nsm) nsm.classList.add('hidden');
+      const awm = document.getElementById('approval-wait-modal'); if (awm) awm.classList.add('hidden');
+      const dm = document.getElementById('destination-modal'); if (dm) dm.classList.add('hidden');
+      const spm = document.getElementById('student-picker-modal'); if (spm) spm.classList.add('hidden');
       this.showToast('Wait list cleared for end-of-class dismissal preparation.', 'info');
     }
 
