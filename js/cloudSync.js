@@ -244,6 +244,7 @@ export class CloudSyncEngine {
         blackoutRules: this.storage.getBlackoutRules(),
         schedules: this.storage.getSchedules(),
         roster: this.storage.getRoster(),
+        pendingApproval: this.storage.getPendingApproval(),
         timeSimulation: this.storage.getTimeSimulation(),
         history: this.storage.getHistory().slice(0, 20)
       };
@@ -273,6 +274,9 @@ export class CloudSyncEngine {
       if (remotePayload.waitList !== undefined) {
         this.storage.saveWaitList(remotePayload.waitList, 'remote');
       }
+      if (remotePayload.pendingApproval !== undefined) {
+        this.storage.savePendingApproval(remotePayload.pendingApproval, 'remote');
+      }
       if (remotePayload.blackoutRules !== undefined) {
         this.storage.saveBlackoutRules(remotePayload.blackoutRules, 'remote');
       }
@@ -291,7 +295,7 @@ export class CloudSyncEngine {
         if (simTimeInput && remotePayload.timeSimulation.simulatedTime) simTimeInput.value = remotePayload.timeSimulation.simulatedTime;
         if (badge) badge.classList.toggle('hidden', !remotePayload.timeSimulation.enabled);
       }
-      if (remotePayload.history !== undefined && remotePayload.history.length > 0) {
+      if (remotePayload.history !== undefined && Array.isArray(remotePayload.history)) {
         this.storage.saveHistory(remotePayload.history, 'remote');
       }
 

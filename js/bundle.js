@@ -3,19 +3,21 @@
   'use strict';
 
   // Global on-screen diagnostic notification
-  window.addEventListener('error', function(e) {
-    console.error('Kiosk runtime error:', e);
-    var errBox = document.getElementById('kiosk-fatal-error');
-    if (!errBox && document.body) {
-      errBox = document.createElement('div');
-      errBox.id = 'kiosk-fatal-error';
-      errBox.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#ffffff;padding:12px;font-family:sans-serif;font-size:13px;font-weight:bold;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,0.5);text-align:center;';
-      document.body.appendChild(errBox);
-    }
-    if (errBox) {
-      errBox.innerHTML = '⚠️ Kiosk Notice: ' + (e.message || 'Error running application') + (e.lineno ? ' (Line ' + e.lineno + ')' : '');
-    }
-  });
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('error', function(e) {
+      console.error('Kiosk runtime error:', e);
+      var errBox = document.getElementById('kiosk-fatal-error');
+      if (!errBox && document.body) {
+        errBox = document.createElement('div');
+        errBox.id = 'kiosk-fatal-error';
+        errBox.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#ffffff;padding:12px;font-family:sans-serif;font-size:13px;font-weight:bold;z-index:999999;box-shadow:0 4px 12px rgba(0,0,0,0.5);text-align:center;';
+        document.body.appendChild(errBox);
+      }
+      if (errBox) {
+        errBox.innerHTML = '⚠️ Kiosk Notice: ' + (e.message || 'Error running application') + (e.lineno ? ' (Line ' + e.lineno + ')' : '');
+      }
+    });
+  }
 
   // --- AUDIO MODULE ---
   ﻿// Web Audio API Sound Generator for Classroom Hall Pass Kiosk
@@ -112,11 +114,12 @@ const STORAGE_KEYS = {
   SCHEDULES: 'schedules',
   BLACKOUT_RULES: 'blackout_rules',
   ROSTER: 'roster',
-  SETTINGS: 'settings',
-  ACTIVE_PASS: 'active_pass',
-  WAIT_LIST: 'wait_list',
-  HISTORY: 'history',
-  TIME_SIMULATION: 'time_simulation'
+  SETTINGS: 'hallpass_settings',
+  ACTIVE_PASS: 'hallpass_active_pass',
+  WAIT_LIST: 'hallpass_wait_list',
+  PENDING_APPROVAL: 'hallpass_pending_approval',
+  TIME_SIMULATION: 'hallpass_time_simulation',
+  HISTORY: 'hallpass_history'
 };
 
 // Default Bell Schedules as requested:
@@ -348,6 +351,14 @@ class StorageManager {
     return history;
   }
 
+  getPendingApproval() {
+    return this.get(STORAGE_KEYS.PENDING_APPROVAL, null);
+  }
+
+  savePendingApproval(approvalReq, source = 'local') {
+    this.set(STORAGE_KEYS.PENDING_APPROVAL, approvalReq, source);
+  }
+
   getTimeSimulation() {
     return this.get(STORAGE_KEYS.TIME_SIMULATION, {
       enabled: false,
@@ -356,8 +367,8 @@ class StorageManager {
     });
   }
 
-  saveTimeSimulation(sim) {
-    this.set(STORAGE_KEYS.TIME_SIMULATION, sim);
+  saveTimeSimulation(sim, source = 'local') {
+    this.set(STORAGE_KEYS.TIME_SIMULATION, sim, source);
   }
 
   exportConfigJson() {
@@ -1560,6 +1571,7 @@ class CloudSyncEngine {
         blackoutRules: this.storage.getBlackoutRules(),
         schedules: this.storage.getSchedules(),
         roster: this.storage.getRoster(),
+        pendingApproval: this.storage.getPendingApproval(),
         timeSimulation: this.storage.getTimeSimulation(),
         history: this.storage.getHistory().slice(0, 20)
       };
@@ -1589,6 +1601,9 @@ class CloudSyncEngine {
       if (remotePayload.waitList !== undefined) {
         this.storage.saveWaitList(remotePayload.waitList, 'remote');
       }
+      if (remotePayload.pendingApproval !== undefined) {
+        this.storage.savePendingApproval(remotePayload.pendingApproval, 'remote');
+      }
       if (remotePayload.blackoutRules !== undefined) {
         this.storage.saveBlackoutRules(remotePayload.blackoutRules, 'remote');
       }
@@ -1607,7 +1622,7 @@ class CloudSyncEngine {
         if (simTimeInput && remotePayload.timeSimulation.simulatedTime) simTimeInput.value = remotePayload.timeSimulation.simulatedTime;
         if (badge) badge.classList.toggle('hidden', !remotePayload.timeSimulation.enabled);
       }
-      if (remotePayload.history !== undefined && remotePayload.history.length > 0) {
+      if (remotePayload.history !== undefined && Array.isArray(remotePayload.history)) {
         this.storage.saveHistory(remotePayload.history, 'remote');
       }
 
@@ -1737,16 +1752,15 @@ class TeacherDashboard {
       exportHistoryBtn.addEventListener('click', () => this.exportHistory());
     }
 
-    const clearHistoryBtn = document.getElementById('btn-clear-history-logs');
-    if (clearHistoryBtn) {
-      clearHistoryBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all pass logs and placeholder test history?')) {
+    document.querySelectorAll('.btn-clear-history-action, #btn-clear-history-logs, #btn-clear-table-logs').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to completely clear all pass logs and start fresh with empty data? This will clear logs across all connected devices.')) {
           this.storage.clearHistory();
           this.renderAnalytics();
-          alert('Pass history logs have been cleared.');
+          alert('All pass history logs have been completely cleared.');
         }
       });
-    }
+    });
 
     const settingsForm = document.getElementById('settings-form');
     if (settingsForm) {
@@ -1905,6 +1919,55 @@ class TeacherDashboard {
     const activePass = this.queueManager.getActivePass();
     const waitList = this.queueManager.getWaitList();
     const rules = this.storage.getBlackoutRules();
+    const pendingApproval = this.storage.getPendingApproval();
+
+    const pendingBox = document.getElementById('monitor-pending-box');
+    const pendingContent = document.getElementById('monitor-pending-content');
+    if (pendingBox && pendingContent) {
+      if (pendingApproval && pendingApproval.status !== 'denied') {
+        pendingBox.classList.remove('hidden');
+        pendingContent.innerHTML = `
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-amber-200 shadow-sm">
+            <div>
+              <span class="text-xs font-black uppercase text-amber-800 tracking-wider">Pass Request</span>
+              <h4 class="text-xl font-black text-gray-900 mt-0.5">${pendingApproval.studentName}</h4>
+              <p class="text-sm text-gray-700">Period: <strong>${pendingApproval.periodName}</strong> | Destination: <strong class="text-indigo-700">${pendingApproval.destination} ${pendingApproval.destinationDetail ? '(' + pendingApproval.destinationDetail + ')' : ''}</strong></p>
+              <p class="text-xs text-rose-600 font-bold mt-1">⛔ Restriction: ${pendingApproval.restrictionReason || 'On No Hall Pass List'}</p>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <button id="btn-deny-pass-req" class="flex-1 sm:flex-none px-4 py-2 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold rounded-xl text-sm transition">❌ Deny</button>
+              <button id="btn-approve-pass-req" class="flex-1 sm:flex-none px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-sm shadow-md transition">✅ Approve Pass</button>
+            </div>
+          </div>
+        `;
+
+        const btnApprove = document.getElementById('btn-approve-pass-req');
+        if (btnApprove) {
+          btnApprove.addEventListener('click', () => {
+            this.queueManager.signOut(
+              { id: pendingApproval.studentId, name: pendingApproval.studentName, period: pendingApproval.periodId },
+              pendingApproval.destination,
+              pendingApproval.destinationDetail,
+              { id: pendingApproval.periodId, name: pendingApproval.periodName }
+            );
+            this.storage.savePendingApproval(null);
+            this.renderMonitor();
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        }
+
+        const btnDeny = document.getElementById('btn-deny-pass-req');
+        if (btnDeny) {
+          btnDeny.addEventListener('click', () => {
+            this.storage.savePendingApproval({ ...pendingApproval, status: 'denied' });
+            this.renderMonitor();
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        }
+      } else {
+        pendingBox.classList.add('hidden');
+      }
+    }
 
     const activeBox = document.getElementById('monitor-active-pass-box');
     const waitListBox = document.getElementById('monitor-waitlist-box');
@@ -2245,13 +2308,16 @@ class TeacherDashboard {
       roster.forEach((st, idx) => {
         const periodObj = schedules.find(s => s.id === st.period);
         const pName = periodObj ? periodObj.name : st.period;
+        const isNoPass = !!st.noPass || (st.restrictions && st.restrictions.toLowerCase().includes('no pass'));
 
         html += `
           <tr class="border-b border-gray-100 text-sm">
             <td class="py-2 px-3 font-semibold text-gray-900">${st.name}</td>
             <td class="py-2 px-3 text-gray-600">${pName}</td>
-            <td class="py-2 px-3 text-gray-500 text-xs">${st.restrictions || 'None'}</td>
-            <td class="py-2 px-3 text-gray-400 text-xs">${st.notes || ''}</td>
+            <td class="py-2 px-3 text-center">
+              <input type="checkbox" data-index="${idx}" class="toggle-student-nopass h-4 w-4 text-rose-600 rounded cursor-pointer" ${isNoPass ? 'checked' : ''} title="Toggle No Hall Pass restriction">
+            </td>
+            <td class="py-2 px-3 text-gray-600 text-xs">${st.restrictions || 'None'} ${st.notes ? '• ' + st.notes : ''}</td>
             <td class="py-2 px-3 text-right">
               <button data-index="${idx}" class="btn-delete-student text-rose-600 hover:text-rose-800 text-xs font-semibold">Delete</button>
             </td>
@@ -2259,6 +2325,14 @@ class TeacherDashboard {
         `;
       });
       tableBody.innerHTML = html;
+
+      tableBody.querySelectorAll('.toggle-student-nopass').forEach(chk => {
+        chk.addEventListener('change', () => {
+          const idx = parseInt(chk.dataset.index, 10);
+          roster[idx].noPass = chk.checked;
+          this.storage.saveRoster(roster);
+        });
+      });
 
       tableBody.querySelectorAll('.btn-delete-student').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2283,17 +2357,20 @@ class TeacherDashboard {
         const periodEl = document.getElementById('select-student-period');
         const restrEl = document.getElementById('input-student-restr');
         const notesEl = document.getElementById('input-student-notes');
+        const noPassEl = document.getElementById('input-student-nopass');
 
         const name = nameEl ? nameEl.value.trim() : '';
         const period = periodEl ? periodEl.value : 'p1';
         const restr = restrEl ? restrEl.value.trim() : '';
         const notes = notesEl ? notesEl.value.trim() : '';
+        const noPass = noPassEl ? noPassEl.checked : false;
 
         if (name) {
           roster.push({
             id: 's_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + period + '_' + Date.now().toString(36),
             name,
             period,
+            noPass: noPass,
             restrictions: restr,
             notes
           });
@@ -2301,6 +2378,7 @@ class TeacherDashboard {
           if (nameEl) nameEl.value = '';
           if (restrEl) restrEl.value = '';
           if (notesEl) notesEl.value = '';
+          if (noPassEl) noPassEl.checked = false;
           this.renderRosterTab();
           alert('Added ' + name + ' to the roster!');
         }
@@ -2728,6 +2806,21 @@ class HallPassApp {
       }
     }
 
+    // Check Pending Approval status
+    const pendingApproval = this.storage.getPendingApproval();
+    const approvalModal = document.getElementById('approval-wait-modal');
+    if (activePass && approvalModal && !approvalModal.classList.contains('hidden')) {
+      approvalModal.classList.add('hidden');
+      this.showToast(`Pass approved! You may now take the pass.`, 'success');
+    }
+    if (pendingApproval && pendingApproval.status === 'denied') {
+      if (approvalModal && !approvalModal.classList.contains('hidden')) {
+        approvalModal.classList.add('hidden');
+      }
+      this.showToast(`❌ Pass request for ${pendingApproval.studentName} was denied by teacher.`, 'error');
+      this.storage.savePendingApproval(null);
+    }
+
     this.previousState = evaluation.state;
   }
 
@@ -2873,6 +2966,47 @@ class HallPassApp {
     if (btnConfirmSignOut) {
       btnConfirmSignOut.addEventListener('click', () => {
         this.handleConfirmSignOut();
+      });
+    }
+
+    // Approval Wait Modal buttons
+    const btnApprovalCancel = document.getElementById('btn-approval-cancel');
+    if (btnApprovalCancel) {
+      btnApprovalCancel.addEventListener('click', () => {
+        this.storage.savePendingApproval(null);
+        const modal = document.getElementById('approval-wait-modal');
+        if (modal) modal.classList.add('hidden');
+        this.showToast('Pass request cancelled.', 'info');
+        this.updateState();
+      });
+    }
+
+    const btnApprovalPin = document.getElementById('btn-approval-pin-override');
+    if (btnApprovalPin) {
+      btnApprovalPin.addEventListener('click', () => {
+        const pin = prompt('Teacher Authorization: Enter your PIN to approve this pass:');
+        if (pin) {
+          const settings = this.storage.getSettings();
+          const correctPin = String(settings.teacherPin !== undefined ? settings.teacherPin : '1234');
+          if (pin.trim() === correctPin) {
+            const req = this.storage.getPendingApproval();
+            if (req) {
+              this.queueManager.signOut(
+                { id: req.studentId, name: req.studentName, period: req.periodId },
+                req.destination,
+                req.destinationDetail,
+                { id: req.periodId, name: req.periodName }
+              );
+              this.storage.savePendingApproval(null);
+              const modal = document.getElementById('approval-wait-modal');
+              if (modal) modal.classList.add('hidden');
+              this.showToast(`Pass approved for ${req.studentName}!`, 'success');
+              this.updateState();
+            }
+          } else {
+            alert('Incorrect PIN.');
+          }
+        }
       });
     }
 
@@ -3111,7 +3245,37 @@ class HallPassApp {
   handleConfirmSignOut() {
     if (!this.selectedStudent) return;
 
+    const cm = document.getElementById('courtesy-modal'); 
+    if (cm) cm.classList.add('hidden');
+
+    const isNoPass = !!this.selectedStudent.noPass || 
+      (this.selectedStudent.restrictions && this.selectedStudent.restrictions.trim().length > 0);
+
     const evaluation = this.scheduleEngine.evaluate();
+    const currentPeriod = evaluation.currentPeriod || { id: 'p1', name: 'Class' };
+
+    if (isNoPass) {
+      // 1. Create a Pending Approval Request
+      const pendingReq = {
+        id: 'req_' + Date.now(),
+        studentId: this.selectedStudent.id,
+        studentName: this.selectedStudent.name,
+        periodId: currentPeriod.id,
+        periodName: currentPeriod.name,
+        destination: this.selectedDestination || 'Restroom',
+        destinationDetail: this.selectedDestinationDetail || '',
+        restrictionReason: this.selectedStudent.restrictions || 'On No Hall Pass List',
+        timestamp: Date.now(),
+        status: 'pending'
+      };
+
+      this.storage.savePendingApproval(pendingReq);
+
+      // 2. Open the Waiting for Approval Modal on Kiosk
+      this.openApprovalWaitModal(pendingReq);
+      return;
+    }
+
     try {
       this.queueManager.signOut(
         this.selectedStudent,
@@ -3119,12 +3283,22 @@ class HallPassApp {
         this.selectedDestinationDetail,
         evaluation.currentPeriod
       );
-      const cm = document.getElementById('courtesy-modal'); if (cm) cm.classList.add('hidden');
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();
     } catch (err) {
       alert(err.message);
     }
+  }
+
+  openApprovalWaitModal(req) {
+    const modal = document.getElementById('approval-wait-modal');
+    const nameEl = document.getElementById('approval-student-name');
+    const reasonEl = document.getElementById('approval-reason-text');
+
+    if (nameEl) nameEl.textContent = req.studentName;
+    if (reasonEl) reasonEl.textContent = req.restrictionReason || 'No Hall Pass List';
+
+    if (modal) modal.classList.remove('hidden');
   }
 
   // Handle student check-in / return
@@ -3306,7 +3480,7 @@ function bootstrapHallPassApp() {
   }
 }
 
-if (typeof document !== 'undefined') {
+if (typeof document !== 'undefined' && document) {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bootstrapHallPassApp);
   } else {
@@ -3315,5 +3489,9 @@ if (typeof document !== 'undefined') {
   }
 }
 
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { StorageManager, QueueManager, ScheduleEngine, AnalyticsEngine, RosterSync, CloudSyncEngine, TeacherDashboard, HallPassApp };
+  }
 
 })(typeof window !== 'undefined' ? window : this, typeof document !== 'undefined' ? document : null);

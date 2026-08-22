@@ -299,6 +299,21 @@ export class HallPassApp {
       }
     }
 
+    // Check Pending Approval status
+    const pendingApproval = this.storage.getPendingApproval();
+    const approvalModal = document.getElementById('approval-wait-modal');
+    if (activePass && approvalModal && !approvalModal.classList.contains('hidden')) {
+      approvalModal.classList.add('hidden');
+      this.showToast(`Pass approved! You may now take the pass.`, 'success');
+    }
+    if (pendingApproval && pendingApproval.status === 'denied') {
+      if (approvalModal && !approvalModal.classList.contains('hidden')) {
+        approvalModal.classList.add('hidden');
+      }
+      this.showToast(`❌ Pass request for ${pendingApproval.studentName} was denied by teacher.`, 'error');
+      this.storage.savePendingApproval(null);
+    }
+
     this.previousState = evaluation.state;
   }
 
@@ -444,6 +459,47 @@ export class HallPassApp {
     if (btnConfirmSignOut) {
       btnConfirmSignOut.addEventListener('click', () => {
         this.handleConfirmSignOut();
+      });
+    }
+
+    // Approval Wait Modal buttons
+    const btnApprovalCancel = document.getElementById('btn-approval-cancel');
+    if (btnApprovalCancel) {
+      btnApprovalCancel.addEventListener('click', () => {
+        this.storage.savePendingApproval(null);
+        const modal = document.getElementById('approval-wait-modal');
+        if (modal) modal.classList.add('hidden');
+        this.showToast('Pass request cancelled.', 'info');
+        this.updateState();
+      });
+    }
+
+    const btnApprovalPin = document.getElementById('btn-approval-pin-override');
+    if (btnApprovalPin) {
+      btnApprovalPin.addEventListener('click', () => {
+        const pin = prompt('Teacher Authorization: Enter your PIN to approve this pass:');
+        if (pin) {
+          const settings = this.storage.getSettings();
+          const correctPin = String(settings.teacherPin !== undefined ? settings.teacherPin : '1234');
+          if (pin.trim() === correctPin) {
+            const req = this.storage.getPendingApproval();
+            if (req) {
+              this.queueManager.signOut(
+                { id: req.studentId, name: req.studentName, period: req.periodId },
+                req.destination,
+                req.destinationDetail,
+                { id: req.periodId, name: req.periodName }
+              );
+              this.storage.savePendingApproval(null);
+              const modal = document.getElementById('approval-wait-modal');
+              if (modal) modal.classList.add('hidden');
+              this.showToast(`Pass approved for ${req.studentName}!`, 'success');
+              this.updateState();
+            }
+          } else {
+            alert('Incorrect PIN.');
+          }
+        }
       });
     }
 
@@ -682,7 +738,37 @@ export class HallPassApp {
   handleConfirmSignOut() {
     if (!this.selectedStudent) return;
 
+    const cm = document.getElementById('courtesy-modal'); 
+    if (cm) cm.classList.add('hidden');
+
+    const isNoPass = !!this.selectedStudent.noPass || 
+      (this.selectedStudent.restrictions && this.selectedStudent.restrictions.trim().length > 0);
+
     const evaluation = this.scheduleEngine.evaluate();
+    const currentPeriod = evaluation.currentPeriod || { id: 'p1', name: 'Class' };
+
+    if (isNoPass) {
+      // 1. Create a Pending Approval Request
+      const pendingReq = {
+        id: 'req_' + Date.now(),
+        studentId: this.selectedStudent.id,
+        studentName: this.selectedStudent.name,
+        periodId: currentPeriod.id,
+        periodName: currentPeriod.name,
+        destination: this.selectedDestination || 'Restroom',
+        destinationDetail: this.selectedDestinationDetail || '',
+        restrictionReason: this.selectedStudent.restrictions || 'On No Hall Pass List',
+        timestamp: Date.now(),
+        status: 'pending'
+      };
+
+      this.storage.savePendingApproval(pendingReq);
+
+      // 2. Open the Waiting for Approval Modal on Kiosk
+      this.openApprovalWaitModal(pendingReq);
+      return;
+    }
+
     try {
       this.queueManager.signOut(
         this.selectedStudent,
@@ -690,12 +776,22 @@ export class HallPassApp {
         this.selectedDestinationDetail,
         evaluation.currentPeriod
       );
-      const cm = document.getElementById('courtesy-modal'); if (cm) cm.classList.add('hidden');
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();
     } catch (err) {
       alert(err.message);
     }
+  }
+
+  openApprovalWaitModal(req) {
+    const modal = document.getElementById('approval-wait-modal');
+    const nameEl = document.getElementById('approval-student-name');
+    const reasonEl = document.getElementById('approval-reason-text');
+
+    if (nameEl) nameEl.textContent = req.studentName;
+    if (reasonEl) reasonEl.textContent = req.restrictionReason || 'No Hall Pass List';
+
+    if (modal) modal.classList.remove('hidden');
   }
 
   // Handle student check-in / return
@@ -877,7 +973,7 @@ function bootstrapHallPassApp() {
   }
 }
 
-if (typeof document !== 'undefined') {
+if (typeof document !== 'undefined' && document) {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bootstrapHallPassApp);
   } else {

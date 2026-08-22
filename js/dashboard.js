@@ -94,16 +94,15 @@ export class TeacherDashboard {
       exportHistoryBtn.addEventListener('click', () => this.exportHistory());
     }
 
-    const clearHistoryBtn = document.getElementById('btn-clear-history-logs');
-    if (clearHistoryBtn) {
-      clearHistoryBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all pass logs and placeholder test history?')) {
+    document.querySelectorAll('.btn-clear-history-action, #btn-clear-history-logs, #btn-clear-table-logs').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to completely clear all pass logs and start fresh with empty data? This will clear logs across all connected devices.')) {
           this.storage.clearHistory();
           this.renderAnalytics();
-          alert('Pass history logs have been cleared.');
+          alert('All pass history logs have been completely cleared.');
         }
       });
-    }
+    });
 
     const settingsForm = document.getElementById('settings-form');
     if (settingsForm) {
@@ -262,6 +261,55 @@ export class TeacherDashboard {
     const activePass = this.queueManager.getActivePass();
     const waitList = this.queueManager.getWaitList();
     const rules = this.storage.getBlackoutRules();
+    const pendingApproval = this.storage.getPendingApproval();
+
+    const pendingBox = document.getElementById('monitor-pending-box');
+    const pendingContent = document.getElementById('monitor-pending-content');
+    if (pendingBox && pendingContent) {
+      if (pendingApproval && pendingApproval.status !== 'denied') {
+        pendingBox.classList.remove('hidden');
+        pendingContent.innerHTML = `
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-amber-200 shadow-sm">
+            <div>
+              <span class="text-xs font-black uppercase text-amber-800 tracking-wider">Pass Request</span>
+              <h4 class="text-xl font-black text-gray-900 mt-0.5">${pendingApproval.studentName}</h4>
+              <p class="text-sm text-gray-700">Period: <strong>${pendingApproval.periodName}</strong> | Destination: <strong class="text-indigo-700">${pendingApproval.destination} ${pendingApproval.destinationDetail ? '(' + pendingApproval.destinationDetail + ')' : ''}</strong></p>
+              <p class="text-xs text-rose-600 font-bold mt-1">⛔ Restriction: ${pendingApproval.restrictionReason || 'On No Hall Pass List'}</p>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <button id="btn-deny-pass-req" class="flex-1 sm:flex-none px-4 py-2 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold rounded-xl text-sm transition">❌ Deny</button>
+              <button id="btn-approve-pass-req" class="flex-1 sm:flex-none px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-sm shadow-md transition">✅ Approve Pass</button>
+            </div>
+          </div>
+        `;
+
+        const btnApprove = document.getElementById('btn-approve-pass-req');
+        if (btnApprove) {
+          btnApprove.addEventListener('click', () => {
+            this.queueManager.signOut(
+              { id: pendingApproval.studentId, name: pendingApproval.studentName, period: pendingApproval.periodId },
+              pendingApproval.destination,
+              pendingApproval.destinationDetail,
+              { id: pendingApproval.periodId, name: pendingApproval.periodName }
+            );
+            this.storage.savePendingApproval(null);
+            this.renderMonitor();
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        }
+
+        const btnDeny = document.getElementById('btn-deny-pass-req');
+        if (btnDeny) {
+          btnDeny.addEventListener('click', () => {
+            this.storage.savePendingApproval({ ...pendingApproval, status: 'denied' });
+            this.renderMonitor();
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        }
+      } else {
+        pendingBox.classList.add('hidden');
+      }
+    }
 
     const activeBox = document.getElementById('monitor-active-pass-box');
     const waitListBox = document.getElementById('monitor-waitlist-box');
@@ -602,13 +650,16 @@ export class TeacherDashboard {
       roster.forEach((st, idx) => {
         const periodObj = schedules.find(s => s.id === st.period);
         const pName = periodObj ? periodObj.name : st.period;
+        const isNoPass = !!st.noPass || (st.restrictions && st.restrictions.toLowerCase().includes('no pass'));
 
         html += `
           <tr class="border-b border-gray-100 text-sm">
             <td class="py-2 px-3 font-semibold text-gray-900">${st.name}</td>
             <td class="py-2 px-3 text-gray-600">${pName}</td>
-            <td class="py-2 px-3 text-gray-500 text-xs">${st.restrictions || 'None'}</td>
-            <td class="py-2 px-3 text-gray-400 text-xs">${st.notes || ''}</td>
+            <td class="py-2 px-3 text-center">
+              <input type="checkbox" data-index="${idx}" class="toggle-student-nopass h-4 w-4 text-rose-600 rounded cursor-pointer" ${isNoPass ? 'checked' : ''} title="Toggle No Hall Pass restriction">
+            </td>
+            <td class="py-2 px-3 text-gray-600 text-xs">${st.restrictions || 'None'} ${st.notes ? '• ' + st.notes : ''}</td>
             <td class="py-2 px-3 text-right">
               <button data-index="${idx}" class="btn-delete-student text-rose-600 hover:text-rose-800 text-xs font-semibold">Delete</button>
             </td>
@@ -616,6 +667,14 @@ export class TeacherDashboard {
         `;
       });
       tableBody.innerHTML = html;
+
+      tableBody.querySelectorAll('.toggle-student-nopass').forEach(chk => {
+        chk.addEventListener('change', () => {
+          const idx = parseInt(chk.dataset.index, 10);
+          roster[idx].noPass = chk.checked;
+          this.storage.saveRoster(roster);
+        });
+      });
 
       tableBody.querySelectorAll('.btn-delete-student').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -640,17 +699,20 @@ export class TeacherDashboard {
         const periodEl = document.getElementById('select-student-period');
         const restrEl = document.getElementById('input-student-restr');
         const notesEl = document.getElementById('input-student-notes');
+        const noPassEl = document.getElementById('input-student-nopass');
 
         const name = nameEl ? nameEl.value.trim() : '';
         const period = periodEl ? periodEl.value : 'p1';
         const restr = restrEl ? restrEl.value.trim() : '';
         const notes = notesEl ? notesEl.value.trim() : '';
+        const noPass = noPassEl ? noPassEl.checked : false;
 
         if (name) {
           roster.push({
             id: 's_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + period + '_' + Date.now().toString(36),
             name,
             period,
+            noPass: noPass,
             restrictions: restr,
             notes
           });
@@ -658,6 +720,7 @@ export class TeacherDashboard {
           if (nameEl) nameEl.value = '';
           if (restrEl) restrEl.value = '';
           if (notesEl) notesEl.value = '';
+          if (noPassEl) noPassEl.checked = false;
           this.renderRosterTab();
           alert('Added ' + name + ' to the roster!');
         }

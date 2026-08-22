@@ -15,11 +15,12 @@ const STORAGE_KEYS = {
   SCHEDULES: 'schedules',
   BLACKOUT_RULES: 'blackout_rules',
   ROSTER: 'roster',
-  SETTINGS: 'settings',
-  ACTIVE_PASS: 'active_pass',
-  WAIT_LIST: 'wait_list',
-  HISTORY: 'history',
-  TIME_SIMULATION: 'time_simulation'
+  SETTINGS: 'hallpass_settings',
+  ACTIVE_PASS: 'hallpass_active_pass',
+  WAIT_LIST: 'hallpass_wait_list',
+  PENDING_APPROVAL: 'hallpass_pending_approval',
+  TIME_SIMULATION: 'hallpass_time_simulation',
+  HISTORY: 'hallpass_history'
 };
 
 // Default Bell Schedules as requested:
@@ -251,6 +252,14 @@ class StorageManager {
     return history;
   }
 
+  getPendingApproval() {
+    return this.get(STORAGE_KEYS.PENDING_APPROVAL, null);
+  }
+
+  savePendingApproval(approvalReq, source = 'local') {
+    this.set(STORAGE_KEYS.PENDING_APPROVAL, approvalReq, source);
+  }
+
   getTimeSimulation() {
     return this.get(STORAGE_KEYS.TIME_SIMULATION, {
       enabled: false,
@@ -259,8 +268,8 @@ class StorageManager {
     });
   }
 
-  saveTimeSimulation(sim) {
-    this.set(STORAGE_KEYS.TIME_SIMULATION, sim);
+  saveTimeSimulation(sim, source = 'local') {
+    this.set(STORAGE_KEYS.TIME_SIMULATION, sim, source);
   }
 
   exportConfigJson() {
