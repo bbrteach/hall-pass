@@ -1,4 +1,4 @@
-﻿// Queue and Pass Manager
+// Queue and Pass Manager
 
 export class QueueManager {
   constructor(storage, sounds) {
@@ -128,6 +128,8 @@ export class QueueManager {
       studentName,
       periodId,
       periodName,
+      noPass: !!student.noPass,
+      restrictions: student.restrictions || '',
       addedTime: Date.now()
     };
 

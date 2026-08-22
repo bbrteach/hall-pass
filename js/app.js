@@ -818,11 +818,15 @@ export class HallPassApp {
   // Prompt the next student in line
   promptNextStudent(nextStudent) {
     this.queueManager.nextPromptStudent = nextStudent;
-    this.selectedStudent = {
+    const roster = this.storage.getRoster() || [];
+    const fullStudent = roster.find(s => s.id === nextStudent.studentId) || {
       id: nextStudent.studentId,
       name: nextStudent.studentName,
-      period: nextStudent.periodId
+      period: nextStudent.periodId,
+      noPass: nextStudent.noPass,
+      restrictions: nextStudent.restrictions
     };
+    this.selectedStudent = fullStudent;
 
     const modal = document.getElementById('next-student-modal');
     const nameEl = document.getElementById('next-student-name');
@@ -858,6 +862,32 @@ export class HallPassApp {
     }
     
     const evaluation = this.scheduleEngine.evaluate();
+    const currentPeriod = evaluation.currentPeriod || { id: 'p1', name: 'Class' };
+    const nsm = document.getElementById('next-student-modal');
+    if (nsm) nsm.classList.add('hidden');
+
+    const isNoPass = !!this.selectedStudent.noPass || 
+      (this.selectedStudent.restrictions && this.selectedStudent.restrictions.trim().length > 0);
+
+    if (isNoPass) {
+      const pendingReq = {
+        id: 'req_' + Date.now(),
+        studentId: this.selectedStudent.id,
+        studentName: this.selectedStudent.name,
+        periodId: currentPeriod.id,
+        periodName: currentPeriod.name,
+        destination: dest,
+        destinationDetail: detail,
+        restrictionReason: this.selectedStudent.restrictions || 'On No Hall Pass List',
+        timestamp: Date.now(),
+        status: 'pending'
+      };
+
+      this.storage.savePendingApproval(pendingReq);
+      this.openApprovalWaitModal(pendingReq);
+      return;
+    }
+
     try {
       this.queueManager.signOut(
         this.selectedStudent,
@@ -865,7 +895,6 @@ export class HallPassApp {
         detail,
         evaluation.currentPeriod
       );
-      const nsm = document.getElementById('next-student-modal'); if (nsm) nsm.classList.add('hidden');
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();
     } catch (err) {
