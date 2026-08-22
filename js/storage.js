@@ -127,7 +127,7 @@ const DEFAULT_SETTINGS = {
   roomName: 'Main Classroom',
   roomCode: 'ROBERTS',
   emergencyTeachers: 'Mr. Roberts or Mr. Hoerter',
-  pin: '1234',
+  pin: '1954',
   googleSheetUrl: '',
   googleSheetGid: '0',
   autoSyncMinutes: 10,

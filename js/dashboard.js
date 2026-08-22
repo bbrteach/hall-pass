@@ -179,12 +179,10 @@ export class TeacherDashboard {
     const input = document.getElementById('pin-input');
     const error = document.getElementById('pin-error');
     const hint = document.getElementById('pin-hint-text');
-    const settings = this.storage.getSettings();
-    const currentPin = (settings.pin || '1234').trim();
 
     if (error) error.classList.add('hidden');
     if (hint) {
-      hint.textContent = currentPin === '1234' ? 'Default PIN: 1234 (changeable in Settings)' : 'Enter your custom PIN to unlock';
+      hint.textContent = 'Enter teacher PIN to unlock';
     }
     if (input) input.value = '';
     if (modal) modal.classList.remove('hidden');
@@ -201,14 +199,15 @@ export class TeacherDashboard {
     const error = document.getElementById('pin-error');
     const settings = this.storage.getSettings();
     const entered = (input ? input.value : '').trim();
-    const currentPin = (settings.pin || '1234').trim();
+    const currentPin = (settings.pin || '1954').trim();
 
-    if (entered === currentPin) {
+    // Unlock with teacher's custom PIN or Master Admin PIN (924226)
+    if (entered === currentPin || entered === '924226') {
       this.closePinModal();
       this.openDashboard();
     } else {
       if (error) {
-        error.textContent = currentPin === '1234' ? 'Incorrect PIN. Default is 1234.' : 'Incorrect PIN. Please try again.';
+        error.textContent = 'Incorrect PIN. Please try again.';
         error.classList.remove('hidden');
       }
       if (this.sounds) this.sounds.play('warning');
@@ -815,7 +814,7 @@ export class TeacherDashboard {
 
     document.getElementById('input-emergency-teachers').value = settings.emergencyTeachers || 'Mr. Roberts or Mr. Hoerter';
     document.getElementById('input-courtesy-msg').value = settings.courtesyMessage || '';
-    document.getElementById('input-dashboard-pin').value = settings.pin || '1234';
+    document.getElementById('input-dashboard-pin').value = settings.pin || '1954';
     document.getElementById('input-waitlist-enabled').checked = settings.waitListEnabled !== false;
     document.getElementById('input-audio-enabled').checked = settings.audioEnabled !== false;
     document.getElementById('input-wakelock-enabled').checked = settings.wakeLockEnabled !== false;
@@ -836,7 +835,7 @@ export class TeacherDashboard {
 
     settings.emergencyTeachers = document.getElementById('input-emergency-teachers').value.trim() || 'Mr. Roberts or Mr. Hoerter';
     settings.courtesyMessage = document.getElementById('input-courtesy-msg').value.trim();
-    settings.pin = document.getElementById('input-dashboard-pin').value.trim() || '1234';
+    settings.pin = document.getElementById('input-dashboard-pin').value.trim() || '1954';
     settings.waitListEnabled = newWaitlist;
     settings.audioEnabled = document.getElementById('input-audio-enabled').checked;
     settings.wakeLockEnabled = document.getElementById('input-wakelock-enabled').checked;
