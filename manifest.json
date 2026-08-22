@@ -1,0 +1,18 @@
+{
+  "name": "Classroom Hall Pass Kiosk",
+  "short_name": "Hall Pass",
+  "description": "Digital Hall Pass System for Classrooms",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#047857",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "apple-touch-icon.svg",
+      "sizes": "180x180 192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

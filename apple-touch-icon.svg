@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="50%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="ticketGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  
+  <!-- App Icon Background with smooth iOS rounded corners -->
+  <rect width="180" height="180" rx="40" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle inner border -->
+  <rect x="2" y="2" width="176" height="176" rx="38" fill="none" stroke="#ffffff" stroke-width="3" stroke-opacity="0.25"/>
+  
+  <!-- Center Visual: Ticket Badge with Running Figure -->
+  <g filter="url(#shadow)" transform="translate(90, 82)">
+    <!-- Ticket Shape -->
+    <path d="M-55,-35 
+             L55,-35 
+             A8,8 0 0 1 55,-35 
+             C50,-20 50,-10 55,0 
+             C50,10 50,20 55,35 
+             L-55,35 
+             C-50,20 -50,10 -55,0 
+             C-50,-10 -50,-20 -55,-35 Z" 
+          fill="url(#ticketGrad)" stroke="#d97706" stroke-width="2"/>
+    
+    <!-- Perforated Line -->
+    <line x1="-12" y1="-33" x2="-12" y2="33" stroke="#b45309" stroke-width="2.5" stroke-dasharray="4,3" stroke-opacity="0.7"/>
+
+    <!-- Running Person Icon inside Ticket -->
+    <g transform="translate(18, 0) scale(1.15)">
+      <!-- Head -->
+      <circle cx="0" cy="-14" r="4.5" fill="#1e293b"/>
+      <!-- Body Torso -->
+      <path d="M-2,-8 L2,-8 L3,3 L-2,4 Z" fill="#1e293b"/>
+      <!-- Arms -->
+      <path d="M-2,-6 L-7,-2 L-10,-5" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M2,-6 L8,-2 L10,3" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Legs in Sprint -->
+      <path d="M-1,3 L-6,9 L-11,8" fill="none" stroke="#1e293b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M2,3 L5,8 L10,13" fill="none" stroke="#1e293b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Star Emblem on left side of ticket -->
+    <text x="-34" y="6" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="900" fill="#78350f" text-anchor="middle">★</text>
+  </g>
+  
+  <!-- "HALL PASS" Label -->
+  <text x="90" y="152" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="1.5">HALL PASS</text>
+</svg>
