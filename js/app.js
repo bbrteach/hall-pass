@@ -290,8 +290,9 @@ export class HallPassApp {
         greenScreen.classList.remove('hidden');
         document.body.className = 'bg-emerald-600 text-white min-h-screen flex flex-col font-sans transition-colors duration-500 select-none';
 
-        // If there are waitlisted students ready to be called once hold/blackout is lifted
-        if (settings.waitListEnabled !== false && waitList.length > 0 && !this.queueManager.nextPromptStudent && !this.isModalOpen()) {
+        // Only prompt waitlisted students when an emergency hold / blackout is lifted
+        const isLiftedHold = this.previousState === 'BLACKOUT';
+        if (isLiftedHold && settings.waitListEnabled !== false && waitList.length > 0 && !this.queueManager.nextPromptStudent && !this.isModalOpen()) {
           const next = waitList.shift();
           this.storage.saveWaitList(waitList);
           this.promptNextStudent(next);

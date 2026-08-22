@@ -219,7 +219,7 @@ export class ScheduleEngine {
         title: 'No Active Class Period',
         reason: 'Currently outside scheduled class times.',
         canWaitlist: false,
-        purgeWaitlist: true,
+        purgeWaitlist: false,
         currentPeriod: null,
         timeStr,
         formattedTime: this.formatTime12Hour(timeStr),
