@@ -1,13 +1,14 @@
 // Teacher Dashboard Controller
 
 export class TeacherDashboard {
-  constructor(storage, scheduleEngine, queueManager, rosterSync, analyticsEngine, sounds) {
+  constructor(storage, scheduleEngine, queueManager, rosterSync, analyticsEngine, sounds, cloudSync = null) {
     this.storage = storage;
     this.scheduleEngine = scheduleEngine;
     this.queueManager = queueManager;
     this.rosterSync = rosterSync;
     this.analytics = analyticsEngine;
     this.sounds = sounds;
+    this.cloudSync = cloudSync;
     this.currentTab = 'monitor';
     this.timeframe = 'today';
     this.periodFilter = 'all';
@@ -19,6 +20,38 @@ export class TeacherDashboard {
   }
 
   bindEvents() {
+    const btnUpdateRoom = document.getElementById('btn-update-room-code');
+    if (btnUpdateRoom) {
+      btnUpdateRoom.addEventListener('click', () => {
+        const input = document.getElementById('input-room-code');
+        const code = input ? input.value.trim().toUpperCase() : 'ROBERTS';
+        if (!code) return;
+        if (this.cloudSync) {
+          this.cloudSync.setRoomCode(code);
+        } else {
+          const s = this.storage.getSettings();
+          s.roomCode = code;
+          this.storage.saveSettings(s);
+        }
+        this.renderSettingsTab();
+        alert('Room code updated to: ' + code + '\nAll devices with this Room Code will stay in real-time sync.');
+      });
+    }
+
+    document.querySelectorAll('.btn-copy-device-link').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.target;
+        const input = document.getElementById(target === 'kiosk' ? 'link-kiosk-url' : 'link-desk-url');
+        if (input) {
+          input.select();
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(input.value).catch(() => {});
+          }
+          alert('Copied ' + (target === 'kiosk' ? 'Door iPad Kiosk' : 'Laptop Desk Monitor') + ' link to clipboard!');
+        }
+      });
+    });
+
     const pinForm = document.getElementById('pin-modal-form');
     if (pinForm) {
       pinForm.addEventListener('submit', (e) => {
@@ -592,10 +625,15 @@ export class TeacherDashboard {
 
       addStudentForm.onsubmit = (e) => {
         e.preventDefault();
-        const name = document.getElementById('input-student-name').value.trim();
-        const period = document.getElementById('select-student-period').value;
-        const restr = document.getElementById('input-student-restr').value.trim();
-        const notes = document.getElementById('input-student-notes').value.trim();
+        const nameEl = document.getElementById('input-student-name');
+        const periodEl = document.getElementById('select-student-period');
+        const restrEl = document.getElementById('input-student-restr');
+        const notesEl = document.getElementById('input-student-notes');
+
+        const name = nameEl ? nameEl.value.trim() : '';
+        const period = periodEl ? periodEl.value : 'p1';
+        const restr = restrEl ? restrEl.value.trim() : '';
+        const notes = notesEl ? notesEl.value.trim() : '';
 
         if (name) {
           roster.push({
@@ -606,10 +644,11 @@ export class TeacherDashboard {
             notes
           });
           this.storage.saveRoster(roster);
-          document.getElementById('input-student-name').value = '';
-          document.getElementById('input-student-restr').value = '';
-          document.getElementById('input-student-notes').value = '';
+          if (nameEl) nameEl.value = '';
+          if (restrEl) restrEl.value = '';
+          if (notesEl) notesEl.value = '';
           this.renderRosterTab();
+          alert('Added ' + name + ' to the roster!');
         }
       };
     }
@@ -685,6 +724,21 @@ export class TeacherDashboard {
 
   renderSettingsTab() {
     const settings = this.storage.getSettings();
+    const roomCode = settings.roomCode || 'ROBERTS';
+    const roomInput = document.getElementById('input-room-code');
+    if (roomInput) roomInput.value = roomCode;
+
+    if (typeof window !== 'undefined' && window.location) {
+      const base = window.location.origin + window.location.pathname;
+      const kioskUrl = base + '?room=' + encodeURIComponent(roomCode);
+      const deskUrl = base + '?room=' + encodeURIComponent(roomCode) + '&view=dashboard';
+
+      const kioskEl = document.getElementById('link-kiosk-url');
+      const deskEl = document.getElementById('link-desk-url');
+      if (kioskEl) kioskEl.value = kioskUrl;
+      if (deskEl) deskEl.value = deskUrl;
+    }
+
     document.getElementById('input-emergency-teachers').value = settings.emergencyTeachers || 'Mr. Roberts or Mr. Hoerter';
     document.getElementById('input-courtesy-msg').value = settings.courtesyMessage || '';
     document.getElementById('input-dashboard-pin').value = settings.pin || '1234';
@@ -698,6 +752,13 @@ export class TeacherDashboard {
     const settings = this.storage.getSettings();
     const prevWaitlist = settings.waitListEnabled !== false;
     const newWaitlist = document.getElementById('input-waitlist-enabled').checked;
+
+    const roomInput = document.getElementById('input-room-code');
+    if (roomInput) {
+      const code = roomInput.value.trim().toUpperCase() || 'ROBERTS';
+      settings.roomCode = code;
+      if (this.cloudSync) this.cloudSync.setRoomCode(code);
+    }
 
     settings.emergencyTeachers = document.getElementById('input-emergency-teachers').value.trim() || 'Mr. Roberts or Mr. Hoerter';
     settings.courtesyMessage = document.getElementById('input-courtesy-msg').value.trim();

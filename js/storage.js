@@ -124,6 +124,7 @@ const DEFAULT_ROSTER = [
 
 const DEFAULT_SETTINGS = {
   roomName: 'Main Classroom',
+  roomCode: 'ROBERTS',
   emergencyTeachers: 'Mr. Roberts or Mr. Hoerter',
   pin: '1234',
   googleSheetUrl: '',
@@ -179,7 +180,7 @@ class StorageManager {
     return this.memoryFallback[fullKey] !== undefined ? this.memoryFallback[fullKey] : defaultValue;
   }
 
-  set(key, value) {
+  set(key, value, source = 'local') {
     const fullKey = this.getKey(key);
     try {
       if (typeof localStorage !== 'undefined') {
@@ -189,14 +190,18 @@ class StorageManager {
       console.warn('Storage set error for key ' + fullKey, e);
     }
     this.memoryFallback[fullKey] = value;
+
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('hallpass:statechange', { detail: { key, source } }));
+    }
   }
 
   getSchedules() {
     return this.get(STORAGE_KEYS.SCHEDULES, DEFAULT_SCHEDULES);
   }
 
-  saveSchedules(schedules) {
-    this.set(STORAGE_KEYS.SCHEDULES, schedules);
+  saveSchedules(schedules, source = 'local') {
+    this.set(STORAGE_KEYS.SCHEDULES, schedules, source);
   }
 
   getBlackoutRules() {
@@ -204,16 +209,16 @@ class StorageManager {
     return { ...DEFAULT_BLACKOUT_RULES, ...rules };
   }
 
-  saveBlackoutRules(rules) {
-    this.set(STORAGE_KEYS.BLACKOUT_RULES, rules);
+  saveBlackoutRules(rules, source = 'local') {
+    this.set(STORAGE_KEYS.BLACKOUT_RULES, rules, source);
   }
 
   getRoster() {
     return this.get(STORAGE_KEYS.ROSTER, DEFAULT_ROSTER);
   }
 
-  saveRoster(roster) {
-    this.set(STORAGE_KEYS.ROSTER, roster);
+  saveRoster(roster, source = 'local') {
+    this.set(STORAGE_KEYS.ROSTER, roster, source);
   }
 
   getSettings() {
@@ -221,32 +226,32 @@ class StorageManager {
     return { ...DEFAULT_SETTINGS, ...settings };
   }
 
-  saveSettings(settings) {
-    this.set(STORAGE_KEYS.SETTINGS, settings);
+  saveSettings(settings, source = 'local') {
+    this.set(STORAGE_KEYS.SETTINGS, settings, source);
   }
 
   getActivePass() {
     return this.get(STORAGE_KEYS.ACTIVE_PASS, null);
   }
 
-  saveActivePass(pass) {
-    this.set(STORAGE_KEYS.ACTIVE_PASS, pass);
+  saveActivePass(pass, source = 'local') {
+    this.set(STORAGE_KEYS.ACTIVE_PASS, pass, source);
   }
 
   getWaitList() {
     return this.get(STORAGE_KEYS.WAIT_LIST, []);
   }
 
-  saveWaitList(waitList) {
-    this.set(STORAGE_KEYS.WAIT_LIST, waitList);
+  saveWaitList(list, source = 'local') {
+    this.set(STORAGE_KEYS.WAIT_LIST, list, source);
   }
 
   getHistory() {
     return this.get(STORAGE_KEYS.HISTORY, SAMPLE_HISTORY);
   }
 
-  saveHistory(history) {
-    this.set(STORAGE_KEYS.HISTORY, history);
+  saveHistory(history, source = 'local') {
+    this.set(STORAGE_KEYS.HISTORY, history, source);
   }
 
   addHistoryRecord(record) {

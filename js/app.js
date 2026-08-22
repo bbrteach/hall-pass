@@ -7,6 +7,7 @@ import { QueueManager } from './queueManager.js';
 import { RosterSync } from './rosterSync.js';
 import { AnalyticsEngine } from './analytics.js';
 import { TeacherDashboard } from './dashboard.js';
+import { CloudSyncEngine } from './cloudSync.js';
 
 export class HallPassApp {
   constructor() {
@@ -16,13 +17,15 @@ export class HallPassApp {
     this.queueManager = new QueueManager(this.storage, this.sounds);
     this.rosterSync = new RosterSync(this.storage);
     this.analytics = new AnalyticsEngine(this.storage, this.scheduleEngine);
+    this.cloudSync = new CloudSyncEngine(this.storage);
     this.dashboard = new TeacherDashboard(
       this.storage,
       this.scheduleEngine,
       this.queueManager,
       this.rosterSync,
       this.analytics,
-      this.sounds
+      this.sounds,
+      this.cloudSync
     );
 
     this.clockInterval = null;
@@ -39,6 +42,7 @@ export class HallPassApp {
     this.bindKioskEvents();
     this.initSimulator();
     this.initWakeLock();
+    this.initCloudSync();
     this.startClockLoop();
 
     window.addEventListener('hallpass:statechange', () => {
@@ -47,6 +51,48 @@ export class HallPassApp {
 
     // Initial evaluation
     this.updateState();
+
+    // Check if opened with ?view=dashboard (Laptop Desk Monitor Mode)
+    this.checkAutoDashboardMode();
+  }
+
+  initCloudSync() {
+    this.cloudSync.init();
+
+    const badge = document.getElementById('sync-status-badge');
+    const text = document.getElementById('sync-status-text');
+    const settingsIndicator = document.getElementById('settings-sync-indicator');
+
+    if (badge) {
+      badge.classList.remove('hidden');
+      badge.addEventListener('click', () => {
+        this.dashboard.openPinModal();
+      });
+    }
+
+    this.cloudSync.onStatusChange((status, label) => {
+      if (text) text.textContent = label;
+      if (settingsIndicator) {
+        if (status === 'connected') {
+          settingsIndicator.className = 'px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full border border-emerald-300';
+          settingsIndicator.textContent = '🟢 ' + label;
+        } else {
+          settingsIndicator.className = 'px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-full border border-amber-300';
+          settingsIndicator.textContent = '🟡 ' + label;
+        }
+      }
+    });
+  }
+
+  checkAutoDashboardMode() {
+    if (typeof window === 'undefined' || !window.location) return;
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view') || params.get('mode');
+    if (view === 'dashboard' || view === 'desk' || view === 'teacher') {
+      setTimeout(() => {
+        this.dashboard.openDashboard();
+      }, 250);
+    }
   }
 
   // Request Screen Wake Lock so iPads / Chromebooks stay awake (safe for iOS Safari)
