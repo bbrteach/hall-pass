@@ -148,6 +148,32 @@ export class QueueManager {
     return filtered;
   }
 
+  // Move student up 1 position on the wait list (Teacher Dashboard)
+  moveWaitListStudentUp(studentId) {
+    const waitList = this.getWaitList();
+    const index = waitList.findIndex(item => item.studentId === studentId);
+    if (index > 0) {
+      const temp = waitList[index];
+      waitList[index] = waitList[index - 1];
+      waitList[index - 1] = temp;
+      this.storage.saveWaitList(waitList);
+    }
+    return waitList;
+  }
+
+  // Move student down 1 position on the wait list (Teacher Dashboard)
+  moveWaitListStudentDown(studentId) {
+    const waitList = this.getWaitList();
+    const index = waitList.findIndex(item => item.studentId === studentId);
+    if (index >= 0 && index < waitList.length - 1) {
+      const temp = waitList[index];
+      waitList[index] = waitList[index + 1];
+      waitList[index + 1] = temp;
+      this.storage.saveWaitList(waitList);
+    }
+    return waitList;
+  }
+
   // Next in line says 'I no longer need to leave' -> Advance queue
   cancelPromptAndAdvance() {
     this.nextPromptStudent = null;

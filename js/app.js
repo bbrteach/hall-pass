@@ -294,12 +294,10 @@ export class HallPassApp {
         greenScreen.classList.remove('hidden');
         document.body.className = 'bg-emerald-600 text-white min-h-screen flex flex-col font-sans transition-colors duration-500 select-none';
 
-        // Only prompt waitlisted students when an emergency hold / blackout is lifted
+        // When hold/blackout is lifted on kiosk, prompt the first student on the wait list
         const isLiftedHold = this.previousState === 'BLACKOUT';
-        if (isLiftedHold && settings.waitListEnabled !== false && waitList.length > 0 && !this.queueManager.nextPromptStudent && !this.isModalOpen()) {
-          const next = waitList.shift();
-          this.storage.saveWaitList(waitList);
-          this.promptNextStudent(next);
+        if (isLiftedHold && settings.waitListEnabled !== false && waitList.length > 0 && !this.queueManager.nextPromptStudent && !this.isModalOpen() && !this.dashboard.isOpen) {
+          this.promptNextStudent(waitList[0]);
         }
       }
     }
@@ -562,9 +560,7 @@ export class HallPassApp {
     if (mode === 'signout' && settings.waitListEnabled !== false) {
       const waitList = this.queueManager.getWaitList();
       if (waitList.length > 0) {
-        const next = waitList.shift();
-        this.storage.saveWaitList(waitList);
-        this.promptNextStudent(next);
+        this.promptNextStudent(waitList[0]);
         return;
       }
     }

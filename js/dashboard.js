@@ -369,7 +369,7 @@ export class TeacherDashboard {
         let html = '<div class="space-y-2">';
         waitList.forEach((st, idx) => {
           html += `
-            <div class="flex items-center justify-between bg-gray-50 border border-gray-200 p-3 rounded-lg">
+            <div class="flex items-center justify-between bg-gray-50 border border-gray-200 p-3 rounded-lg hover:border-blue-300 transition">
               <div class="flex items-center gap-3">
                 <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-800 font-black text-xs flex items-center justify-center">#${idx + 1}</span>
                 <div>
@@ -377,18 +377,43 @@ export class TeacherDashboard {
                   <span class="text-xs text-gray-500 ml-2">(${st.periodName || 'Class'})</span>
                 </div>
               </div>
-              <button data-id="${st.studentId}" class="btn-remove-waitlist text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded">Remove</button>
+              <div class="flex items-center gap-1.5">
+                ${idx > 0 ? `<button data-id="${st.studentId}" class="btn-moveup-waitlist text-xs text-blue-700 hover:text-blue-900 font-bold px-2.5 py-1 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition active:scale-95" title="Move Up in Line">⬆️ Up</button>` : ''}
+                ${idx < waitList.length - 1 ? `<button data-id="${st.studentId}" class="btn-movedown-waitlist text-xs text-blue-700 hover:text-blue-900 font-bold px-2.5 py-1 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition active:scale-95" title="Move Down in Line">⬇️ Down</button>` : ''}
+                <button data-id="${st.studentId}" class="btn-remove-waitlist text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 transition ml-1">Remove</button>
+              </div>
             </div>
           `;
         });
         html += '</div>';
         waitListBox.innerHTML = html;
 
+        waitListBox.querySelectorAll('.btn-moveup-waitlist').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const sid = btn.dataset.id;
+            this.queueManager.moveWaitListStudentUp(sid);
+            this.renderMonitor();
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        });
+
+        waitListBox.querySelectorAll('.btn-movedown-waitlist').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const sid = btn.dataset.id;
+            this.queueManager.moveWaitListStudentDown(sid);
+            this.renderMonitor();
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        });
+
         waitListBox.querySelectorAll('.btn-remove-waitlist').forEach(btn => {
           btn.addEventListener('click', () => {
             const sid = btn.dataset.id;
             this.queueManager.removeFromWaitList(sid);
             this.renderMonitor();
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
             window.dispatchEvent(new CustomEvent('hallpass:statechange'));
           });
         });
