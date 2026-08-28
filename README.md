@@ -68,7 +68,7 @@ The server will print:
 
 ## 🔒 Teacher Dashboard Default Credentials
 
-- **Default PIN**: `1954` (Can be changed in the **Settings** tab).
+- **Default PIN**: `1234` (Can be changed in the **Settings** tab).
 - **Default Emergency Contacts**: `Mr. Roberts or Mr. Hoerter` (Customizable in Settings).
 
 ---
