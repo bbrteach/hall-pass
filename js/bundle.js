@@ -236,6 +236,8 @@ const DEFAULT_SETTINGS = {
   audioEnabled: true,
   wakeLockEnabled: true,
   maxTripDurationMins: 10,
+  passLimitEnabled: false,
+  maxPassLimit: 3,
   courtesyMessage: 'Please make your trip as quick as possible to respect classmates and minimize loss of instruction.'
 };
 
@@ -283,7 +285,16 @@ class StorageManager {
   }
 
   getSchedules() {
-    return this.get(STORAGE_KEYS.SCHEDULES, DEFAULT_SCHEDULES);
+    const scheds = this.get(STORAGE_KEYS.SCHEDULES, DEFAULT_SCHEDULES);
+    if (Array.isArray(scheds)) {
+      return scheds.map(s => {
+        if (s.id === 'p4' && s.isBlackedOut === undefined) {
+          return { ...s, isBlackedOut: true };
+        }
+        return s;
+      });
+    }
+    return DEFAULT_SCHEDULES;
   }
 
   saveSchedules(schedules, source = 'local') {
@@ -358,6 +369,18 @@ class StorageManager {
     const realHistory = history.filter(h => !h.isSimulated);
     this.saveHistory(realHistory);
     return realHistory;
+  }
+
+  deleteHistoryRecord(recordId, source = 'local') {
+    const history = this.getHistory();
+    const targetIdStr = String(recordId);
+    const updated = history.filter(h => {
+      const hId = h.id ? String(h.id) : '';
+      const hTs = h.signOutTime ? String(h.signOutTime) : (h.timestamp ? String(h.timestamp) : '');
+      return hId !== targetIdStr && hTs !== targetIdStr;
+    });
+    this.saveHistory(updated, source);
+    return updated;
   }
 
   addHistoryRecord(record) {
@@ -619,6 +642,25 @@ class ScheduleEngine {
 
     // Handle Passing Period
     if (isPassingPeriod && nextPeriod) {
+      if (nextPeriod.isBlackedOut) {
+        // If the upcoming period is blacked out, NO students can join the wait list during passing period!
+        return {
+          state: 'BLACKOUT',
+          reasonType: 'PASSING_PERIOD',
+          title: `Passing Period (${nextPeriod.name} Restricted)`,
+          reason: `Passing period before ${nextPeriod.name}. The hall pass is not available during ${nextPeriod.name}.`,
+          canWaitlist: false,
+          targetPeriod: nextPeriod,
+          unlockTime: this.formatTime12Hour(nextPeriod.end),
+          purgeWaitlist: false,
+          currentPeriod: null,
+          nextPeriod: nextPeriod,
+          timeStr,
+          formattedTime: this.formatTime12Hour(timeStr),
+          isSimulated
+        };
+      }
+
       const first10UnlockMins = this.timeToMinutes(nextPeriod.start) + (blackoutRules.firstMinutes || 10);
       const unlockTimeStr = this.formatTime12Hour(this.minutesToTimeString(first10UnlockMins));
       
@@ -904,9 +946,43 @@ class QueueManager {
 
     this.storage.addHistoryRecord(completedPass);
     this.storage.saveShadowPass(null);
+    this.checkAndApplyPassLimit(completedPass.studentId);
 
     if (this.sounds) this.sounds.play('checkin');
     return completedPass;
+  }
+
+  // Check if a student has met/exceeded the hall pass limit and automatically tag them with noPass
+  checkAndApplyPassLimit(studentId) {
+    if (!studentId) return;
+    const settings = this.storage.getSettings();
+    if (!settings.passLimitEnabled) return;
+    const limit = parseInt(settings.maxPassLimit, 10) || 3;
+    if (limit <= 0) return;
+
+    const history = this.storage.getHistory() || [];
+    const count = history.filter(h => h.studentId === studentId && h.status !== 'denied' && !h.isSimulated).length;
+    if (count >= limit) {
+      const roster = this.storage.getRoster() || [];
+      let updated = false;
+      const updatedRoster = roster.map(s => {
+        if (s.id === studentId) {
+          if (!s.noPass) {
+            updated = true;
+            return {
+              ...s,
+              noPass: true,
+              restrictions: s.restrictions ? s.restrictions : `Pass Limit Reached (${count}/${limit})`
+            };
+          }
+        }
+        return s;
+      });
+
+      if (updated) {
+        this.storage.saveRoster(updatedRoster);
+      }
+    }
   }
 
   // Sign in / Return current student (Main Pass)
@@ -928,6 +1004,7 @@ class QueueManager {
 
     this.storage.addHistoryRecord(completedPass);
     this.storage.saveActivePass(null);
+    this.checkAndApplyPassLimit(completedPass.studentId);
 
     if (this.sounds) this.sounds.play('checkin');
 
@@ -972,6 +1049,16 @@ class QueueManager {
   addToWaitList(student, currentPeriod = null) {
     const studentId = student.id || student.studentId;
     const studentName = student.name || student.studentName;
+
+    // Check if student is on the No Pass List
+    const roster = this.storage.getRoster() || [];
+    const rosterStudent = roster.find(s => s.id === studentId);
+    const isNoPass = (student && (student.noPass || (student.restrictions && student.restrictions.trim().length > 0))) || 
+                     (rosterStudent && (rosterStudent.noPass || (rosterStudent.restrictions && rosterStudent.restrictions.trim().length > 0)));
+
+    if (isNoPass) {
+      throw new Error(`${studentName} is on the no hall pass list.`);
+    }
 
     if (this.isStudentOut(studentId)) {
       throw new Error(`${studentName} is currently signed out.`);
@@ -2434,10 +2521,11 @@ class TeacherDashboard {
     if (historyTable) {
       const records = this.analytics.filterHistory(this.timeframe, this.periodFilter);
       if (records.length === 0) {
-        historyTable.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-400">No pass history recorded.</td></tr>';
+        historyTable.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-400">No pass history recorded.</td></tr>';
       } else {
         let html = '';
         records.slice(0, 50).forEach(r => {
+          const recId = r.id || r.signOutTime || r.timestamp;
           const outStr = r.signOutTime ? new Date(r.signOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
           const inStr = r.returnTime ? new Date(r.returnTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Out';
           html += `
@@ -2451,10 +2539,28 @@ class TeacherDashboard {
               <td class="py-2 px-3">
                 ${r.isSimulated ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">🧪 Simulation</span>' : '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">🟢 Live Kiosk</span>'}
               </td>
+              <td class="py-2 px-3 text-right">
+                <button type="button" class="btn-delete-history-item p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" data-id="${recId}" data-name="${r.studentName}" title="Delete this pass entry">
+                  🗑️
+                </button>
+              </td>
             </tr>
           `;
         });
         historyTable.innerHTML = html;
+
+        historyTable.querySelectorAll('.btn-delete-history-item').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const recId = btn.dataset.id;
+            const studentName = btn.dataset.name || 'this student';
+            if (confirm(`Remove this pass record for ${studentName}?`)) {
+              this.storage.deleteHistoryRecord(recId);
+              this.renderAnalytics();
+              if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+              window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+            }
+          });
+        });
       }
     }
   }
@@ -2758,6 +2864,11 @@ class TeacherDashboard {
     document.getElementById('input-audio-enabled').checked = settings.audioEnabled !== false;
     document.getElementById('input-wakelock-enabled').checked = settings.wakeLockEnabled !== false;
     document.getElementById('input-max-duration').value = settings.maxTripDurationMins || 10;
+    
+    const chkPassLimit = document.getElementById('input-pass-limit-enabled');
+    const inputPassLimit = document.getElementById('input-max-pass-limit');
+    if (chkPassLimit) chkPassLimit.checked = !!settings.passLimitEnabled;
+    if (inputPassLimit) inputPassLimit.value = settings.maxPassLimit || 3;
   }
 
   saveSettings() {
@@ -2779,6 +2890,11 @@ class TeacherDashboard {
     settings.audioEnabled = document.getElementById('input-audio-enabled').checked;
     settings.wakeLockEnabled = document.getElementById('input-wakelock-enabled').checked;
     settings.maxTripDurationMins = parseInt(document.getElementById('input-max-duration').value, 10) || 10;
+
+    const chkPassLimit = document.getElementById('input-pass-limit-enabled');
+    const inputPassLimit = document.getElementById('input-max-pass-limit');
+    if (chkPassLimit) settings.passLimitEnabled = chkPassLimit.checked;
+    if (inputPassLimit) settings.maxPassLimit = parseInt(inputPassLimit.value, 10) || 3;
 
     if (prevWaitlist && !newWaitlist) {
       this.queueManager.purgeWaitList('Teacher disabled wait list feature');
@@ -3261,6 +3377,14 @@ class HallPassApp {
       });
     }
 
+    // No Pass List Modal Acknowledge button
+    const btnAckNoPass = document.getElementById('btn-acknowledge-nopass');
+    if (btnAckNoPass) {
+      btnAckNoPass.addEventListener('click', () => {
+        this.handleAcknowledgeNoPass();
+      });
+    }
+
     // Approval Wait Modal buttons
     const btnApprovalCancel = document.getElementById('btn-approval-cancel');
     if (btnApprovalCancel) {
@@ -3456,20 +3580,23 @@ class HallPassApp {
     this.selectedStudent = student;
     const pickerModal = document.getElementById('student-picker-modal'); if (pickerModal) pickerModal.classList.add('hidden');
 
-    if (this.pickerMode === 'waitlist') {
-      const evaluation = this.scheduleEngine.evaluate();
-      const targetP = evaluation.currentPeriod || evaluation.nextPeriod;
-      this.queueManager.addToWaitList(student, targetP);
-      this.showToast(`Added ${student.name} to the wait list!`, 'success');
-      this.updateState();
+    const isNoPass = !!student.noPass || (student.restrictions && student.restrictions.trim().length > 0);
+    if (isNoPass) {
+      this.openNoPassModal(student, this.pickerMode);
       return;
     }
 
-    // If Sign Out mode: check restrictions
-    if (student.restrictions) {
-      if (!confirm(`Note for ${student.name}: "${student.restrictions}"\n\nDo you want to proceed with signing out?`)) {
-        return;
+    if (this.pickerMode === 'waitlist') {
+      try {
+        const evaluation = this.scheduleEngine.evaluate();
+        const targetP = evaluation.currentPeriod || evaluation.nextPeriod;
+        this.queueManager.addToWaitList(student, targetP);
+        this.showToast(`Added ${student.name} to the wait list!`, 'success');
+        this.updateState();
+      } catch (err) {
+        alert(err.message);
       }
+      return;
     }
 
     // Open Destination Picker Modal
@@ -3568,24 +3695,7 @@ class HallPassApp {
     const currentPeriod = evaluation.currentPeriod || { id: 'p1', name: 'Class' };
 
     if (isNoPass) {
-      // 1. Create a Pending Approval Request
-      const pendingReq = {
-        id: 'req_' + Date.now(),
-        studentId: this.selectedStudent.id,
-        studentName: this.selectedStudent.name,
-        periodId: currentPeriod.id,
-        periodName: currentPeriod.name,
-        destination: this.selectedDestination || 'Restroom',
-        destinationDetail: this.selectedDestinationDetail || '',
-        restrictionReason: this.selectedStudent.restrictions || 'On No Hall Pass List',
-        timestamp: Date.now(),
-        status: 'pending'
-      };
-
-      this.storage.savePendingApproval(pendingReq);
-
-      // 2. Open the Waiting for Approval Modal on Kiosk
-      this.openApprovalWaitModal(pendingReq);
+      this.openNoPassModal(this.selectedStudent, 'signout');
       return;
     }
 
@@ -3601,6 +3711,53 @@ class HallPassApp {
       this.updateState();
     } catch (err) {
       alert(err.message);
+    }
+  }
+
+  openNoPassModal(student, context = 'signout') {
+    this.noPassStudent = student;
+    this.noPassContext = context;
+    const modal = document.getElementById('no-pass-modal');
+    const msgEl = document.getElementById('no-pass-message-text');
+    const settings = this.storage.getSettings();
+    const teacherName = (settings && settings.emergencyTeachers && settings.emergencyTeachers.trim().length > 0) 
+      ? settings.emergencyTeachers.trim() 
+      : 'the teacher';
+
+    if (msgEl) {
+      msgEl.textContent = `You are currently on the No Hall Pass List. If you believe this is in error, please speak with ${teacherName} for additional information.`;
+    }
+
+    if (modal) modal.classList.remove('hidden');
+    if (this.sounds) this.sounds.play('warning');
+  }
+
+  handleAcknowledgeNoPass() {
+    const modal = document.getElementById('no-pass-modal');
+    if (modal) modal.classList.add('hidden');
+
+    const student = this.noPassStudent;
+    const context = this.noPassContext;
+    this.noPassStudent = null;
+    this.noPassContext = null;
+
+    if (context === 'waitlist') {
+      this.updateState();
+      return;
+    }
+
+    if (student) {
+      this.queueManager.removeFromWaitList(student.id || student.studentId);
+    }
+
+    // Check if there are other students on the waitlist
+    const waitList = this.queueManager.getWaitList();
+    if (waitList.length > 0) {
+      const next = waitList.shift();
+      this.storage.saveWaitList(waitList);
+      setTimeout(() => this.promptNextStudent(next), 300);
+    } else {
+      this.updateState();
     }
   }
 
@@ -3692,21 +3849,7 @@ class HallPassApp {
       (this.selectedStudent.restrictions && this.selectedStudent.restrictions.trim().length > 0);
 
     if (isNoPass) {
-      const pendingReq = {
-        id: 'req_' + Date.now(),
-        studentId: this.selectedStudent.id,
-        studentName: this.selectedStudent.name,
-        periodId: currentPeriod.id,
-        periodName: currentPeriod.name,
-        destination: dest,
-        destinationDetail: detail,
-        restrictionReason: this.selectedStudent.restrictions || 'On No Hall Pass List',
-        timestamp: Date.now(),
-        status: 'pending'
-      };
-
-      this.storage.savePendingApproval(pendingReq);
-      this.openApprovalWaitModal(pendingReq);
+      this.openNoPassModal(this.selectedStudent, 'next_turn');
       return;
     }
 

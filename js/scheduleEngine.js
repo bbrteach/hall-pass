@@ -192,6 +192,25 @@ export class ScheduleEngine {
 
     // Handle Passing Period
     if (isPassingPeriod && nextPeriod) {
+      if (nextPeriod.isBlackedOut) {
+        // If the upcoming period is blacked out, NO students can join the wait list during passing period!
+        return {
+          state: 'BLACKOUT',
+          reasonType: 'PASSING_PERIOD',
+          title: `Passing Period (${nextPeriod.name} Restricted)`,
+          reason: `Passing period before ${nextPeriod.name}. The hall pass is not available during ${nextPeriod.name}.`,
+          canWaitlist: false,
+          targetPeriod: nextPeriod,
+          unlockTime: this.formatTime12Hour(nextPeriod.end),
+          purgeWaitlist: false,
+          currentPeriod: null,
+          nextPeriod: nextPeriod,
+          timeStr,
+          formattedTime: this.formatTime12Hour(timeStr),
+          isSimulated
+        };
+      }
+
       const first10UnlockMins = this.timeToMinutes(nextPeriod.start) + (blackoutRules.firstMinutes || 10);
       const unlockTimeStr = this.formatTime12Hour(this.minutesToTimeString(first10UnlockMins));
       

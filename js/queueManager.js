@@ -130,9 +130,43 @@ export class QueueManager {
 
     this.storage.addHistoryRecord(completedPass);
     this.storage.saveShadowPass(null);
+    this.checkAndApplyPassLimit(completedPass.studentId);
 
     if (this.sounds) this.sounds.play('checkin');
     return completedPass;
+  }
+
+  // Check if a student has met/exceeded the hall pass limit and automatically tag them with noPass
+  checkAndApplyPassLimit(studentId) {
+    if (!studentId) return;
+    const settings = this.storage.getSettings();
+    if (!settings.passLimitEnabled) return;
+    const limit = parseInt(settings.maxPassLimit, 10) || 3;
+    if (limit <= 0) return;
+
+    const history = this.storage.getHistory() || [];
+    const count = history.filter(h => h.studentId === studentId && h.status !== 'denied' && !h.isSimulated).length;
+    if (count >= limit) {
+      const roster = this.storage.getRoster() || [];
+      let updated = false;
+      const updatedRoster = roster.map(s => {
+        if (s.id === studentId) {
+          if (!s.noPass) {
+            updated = true;
+            return {
+              ...s,
+              noPass: true,
+              restrictions: s.restrictions ? s.restrictions : `Pass Limit Reached (${count}/${limit})`
+            };
+          }
+        }
+        return s;
+      });
+
+      if (updated) {
+        this.storage.saveRoster(updatedRoster);
+      }
+    }
   }
 
   // Sign in / Return current student (Main Pass)
@@ -154,6 +188,7 @@ export class QueueManager {
 
     this.storage.addHistoryRecord(completedPass);
     this.storage.saveActivePass(null);
+    this.checkAndApplyPassLimit(completedPass.studentId);
 
     if (this.sounds) this.sounds.play('checkin');
 
@@ -198,6 +233,16 @@ export class QueueManager {
   addToWaitList(student, currentPeriod = null) {
     const studentId = student.id || student.studentId;
     const studentName = student.name || student.studentName;
+
+    // Check if student is on the No Pass List
+    const roster = this.storage.getRoster() || [];
+    const rosterStudent = roster.find(s => s.id === studentId);
+    const isNoPass = (student && (student.noPass || (student.restrictions && student.restrictions.trim().length > 0))) || 
+                     (rosterStudent && (rosterStudent.noPass || (rosterStudent.restrictions && rosterStudent.restrictions.trim().length > 0)));
+
+    if (isNoPass) {
+      throw new Error(`${studentName} is on the no hall pass list.`);
+    }
 
     if (this.isStudentOut(studentId)) {
       throw new Error(`${studentName} is currently signed out.`);

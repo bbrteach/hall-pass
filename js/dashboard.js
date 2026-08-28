@@ -614,10 +614,11 @@ export class TeacherDashboard {
     if (historyTable) {
       const records = this.analytics.filterHistory(this.timeframe, this.periodFilter);
       if (records.length === 0) {
-        historyTable.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-400">No pass history recorded.</td></tr>';
+        historyTable.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-400">No pass history recorded.</td></tr>';
       } else {
         let html = '';
         records.slice(0, 50).forEach(r => {
+          const recId = r.id || r.signOutTime || r.timestamp;
           const outStr = r.signOutTime ? new Date(r.signOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
           const inStr = r.returnTime ? new Date(r.returnTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Out';
           html += `
@@ -631,10 +632,28 @@ export class TeacherDashboard {
               <td class="py-2 px-3">
                 ${r.isSimulated ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">🧪 Simulation</span>' : '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">🟢 Live Kiosk</span>'}
               </td>
+              <td class="py-2 px-3 text-right">
+                <button type="button" class="btn-delete-history-item p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" data-id="${recId}" data-name="${r.studentName}" title="Delete this pass entry">
+                  🗑️
+                </button>
+              </td>
             </tr>
           `;
         });
         historyTable.innerHTML = html;
+
+        historyTable.querySelectorAll('.btn-delete-history-item').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const recId = btn.dataset.id;
+            const studentName = btn.dataset.name || 'this student';
+            if (confirm(`Remove this pass record for ${studentName}?`)) {
+              this.storage.deleteHistoryRecord(recId);
+              this.renderAnalytics();
+              if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+              window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+            }
+          });
+        });
       }
     }
   }
@@ -938,6 +957,11 @@ export class TeacherDashboard {
     document.getElementById('input-audio-enabled').checked = settings.audioEnabled !== false;
     document.getElementById('input-wakelock-enabled').checked = settings.wakeLockEnabled !== false;
     document.getElementById('input-max-duration').value = settings.maxTripDurationMins || 10;
+    
+    const chkPassLimit = document.getElementById('input-pass-limit-enabled');
+    const inputPassLimit = document.getElementById('input-max-pass-limit');
+    if (chkPassLimit) chkPassLimit.checked = !!settings.passLimitEnabled;
+    if (inputPassLimit) inputPassLimit.value = settings.maxPassLimit || 3;
   }
 
   saveSettings() {
@@ -959,6 +983,11 @@ export class TeacherDashboard {
     settings.audioEnabled = document.getElementById('input-audio-enabled').checked;
     settings.wakeLockEnabled = document.getElementById('input-wakelock-enabled').checked;
     settings.maxTripDurationMins = parseInt(document.getElementById('input-max-duration').value, 10) || 10;
+
+    const chkPassLimit = document.getElementById('input-pass-limit-enabled');
+    const inputPassLimit = document.getElementById('input-max-pass-limit');
+    if (chkPassLimit) settings.passLimitEnabled = chkPassLimit.checked;
+    if (inputPassLimit) settings.maxPassLimit = parseInt(inputPassLimit.value, 10) || 3;
 
     if (prevWaitlist && !newWaitlist) {
       this.queueManager.purgeWaitList('Teacher disabled wait list feature');

@@ -473,6 +473,14 @@ export class HallPassApp {
       });
     }
 
+    // No Pass List Modal Acknowledge button
+    const btnAckNoPass = document.getElementById('btn-acknowledge-nopass');
+    if (btnAckNoPass) {
+      btnAckNoPass.addEventListener('click', () => {
+        this.handleAcknowledgeNoPass();
+      });
+    }
+
     // Approval Wait Modal buttons
     const btnApprovalCancel = document.getElementById('btn-approval-cancel');
     if (btnApprovalCancel) {
@@ -668,20 +676,23 @@ export class HallPassApp {
     this.selectedStudent = student;
     const pickerModal = document.getElementById('student-picker-modal'); if (pickerModal) pickerModal.classList.add('hidden');
 
-    if (this.pickerMode === 'waitlist') {
-      const evaluation = this.scheduleEngine.evaluate();
-      const targetP = evaluation.currentPeriod || evaluation.nextPeriod;
-      this.queueManager.addToWaitList(student, targetP);
-      this.showToast(`Added ${student.name} to the wait list!`, 'success');
-      this.updateState();
+    const isNoPass = !!student.noPass || (student.restrictions && student.restrictions.trim().length > 0);
+    if (isNoPass) {
+      this.openNoPassModal(student, this.pickerMode);
       return;
     }
 
-    // If Sign Out mode: check restrictions
-    if (student.restrictions) {
-      if (!confirm(`Note for ${student.name}: "${student.restrictions}"\n\nDo you want to proceed with signing out?`)) {
-        return;
+    if (this.pickerMode === 'waitlist') {
+      try {
+        const evaluation = this.scheduleEngine.evaluate();
+        const targetP = evaluation.currentPeriod || evaluation.nextPeriod;
+        this.queueManager.addToWaitList(student, targetP);
+        this.showToast(`Added ${student.name} to the wait list!`, 'success');
+        this.updateState();
+      } catch (err) {
+        alert(err.message);
       }
+      return;
     }
 
     // Open Destination Picker Modal
@@ -780,24 +791,7 @@ export class HallPassApp {
     const currentPeriod = evaluation.currentPeriod || { id: 'p1', name: 'Class' };
 
     if (isNoPass) {
-      // 1. Create a Pending Approval Request
-      const pendingReq = {
-        id: 'req_' + Date.now(),
-        studentId: this.selectedStudent.id,
-        studentName: this.selectedStudent.name,
-        periodId: currentPeriod.id,
-        periodName: currentPeriod.name,
-        destination: this.selectedDestination || 'Restroom',
-        destinationDetail: this.selectedDestinationDetail || '',
-        restrictionReason: this.selectedStudent.restrictions || 'On No Hall Pass List',
-        timestamp: Date.now(),
-        status: 'pending'
-      };
-
-      this.storage.savePendingApproval(pendingReq);
-
-      // 2. Open the Waiting for Approval Modal on Kiosk
-      this.openApprovalWaitModal(pendingReq);
+      this.openNoPassModal(this.selectedStudent, 'signout');
       return;
     }
 
@@ -813,6 +807,53 @@ export class HallPassApp {
       this.updateState();
     } catch (err) {
       alert(err.message);
+    }
+  }
+
+  openNoPassModal(student, context = 'signout') {
+    this.noPassStudent = student;
+    this.noPassContext = context;
+    const modal = document.getElementById('no-pass-modal');
+    const msgEl = document.getElementById('no-pass-message-text');
+    const settings = this.storage.getSettings();
+    const teacherName = (settings && settings.emergencyTeachers && settings.emergencyTeachers.trim().length > 0) 
+      ? settings.emergencyTeachers.trim() 
+      : 'the teacher';
+
+    if (msgEl) {
+      msgEl.textContent = `You are currently on the No Hall Pass List. If you believe this is in error, please speak with ${teacherName} for additional information.`;
+    }
+
+    if (modal) modal.classList.remove('hidden');
+    if (this.sounds) this.sounds.play('warning');
+  }
+
+  handleAcknowledgeNoPass() {
+    const modal = document.getElementById('no-pass-modal');
+    if (modal) modal.classList.add('hidden');
+
+    const student = this.noPassStudent;
+    const context = this.noPassContext;
+    this.noPassStudent = null;
+    this.noPassContext = null;
+
+    if (context === 'waitlist') {
+      this.updateState();
+      return;
+    }
+
+    if (student) {
+      this.queueManager.removeFromWaitList(student.id || student.studentId);
+    }
+
+    // Check if there are other students on the waitlist
+    const waitList = this.queueManager.getWaitList();
+    if (waitList.length > 0) {
+      const next = waitList.shift();
+      this.storage.saveWaitList(waitList);
+      setTimeout(() => this.promptNextStudent(next), 300);
+    } else {
+      this.updateState();
     }
   }
 
@@ -904,21 +945,7 @@ export class HallPassApp {
       (this.selectedStudent.restrictions && this.selectedStudent.restrictions.trim().length > 0);
 
     if (isNoPass) {
-      const pendingReq = {
-        id: 'req_' + Date.now(),
-        studentId: this.selectedStudent.id,
-        studentName: this.selectedStudent.name,
-        periodId: currentPeriod.id,
-        periodName: currentPeriod.name,
-        destination: dest,
-        destinationDetail: detail,
-        restrictionReason: this.selectedStudent.restrictions || 'On No Hall Pass List',
-        timestamp: Date.now(),
-        status: 'pending'
-      };
-
-      this.storage.savePendingApproval(pendingReq);
-      this.openApprovalWaitModal(pendingReq);
+      this.openNoPassModal(this.selectedStudent, 'next_turn');
       return;
     }
 

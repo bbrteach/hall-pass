@@ -137,6 +137,8 @@ const DEFAULT_SETTINGS = {
   audioEnabled: true,
   wakeLockEnabled: true,
   maxTripDurationMins: 10,
+  passLimitEnabled: false,
+  maxPassLimit: 3,
   courtesyMessage: 'Please make your trip as quick as possible to respect classmates and minimize loss of instruction.'
 };
 
@@ -184,7 +186,16 @@ class StorageManager {
   }
 
   getSchedules() {
-    return this.get(STORAGE_KEYS.SCHEDULES, DEFAULT_SCHEDULES);
+    const scheds = this.get(STORAGE_KEYS.SCHEDULES, DEFAULT_SCHEDULES);
+    if (Array.isArray(scheds)) {
+      return scheds.map(s => {
+        if (s.id === 'p4' && s.isBlackedOut === undefined) {
+          return { ...s, isBlackedOut: true };
+        }
+        return s;
+      });
+    }
+    return DEFAULT_SCHEDULES;
   }
 
   saveSchedules(schedules, source = 'local') {
@@ -259,6 +270,18 @@ class StorageManager {
     const realHistory = history.filter(h => !h.isSimulated);
     this.saveHistory(realHistory);
     return realHistory;
+  }
+
+  deleteHistoryRecord(recordId, source = 'local') {
+    const history = this.getHistory();
+    const targetIdStr = String(recordId);
+    const updated = history.filter(h => {
+      const hId = h.id ? String(h.id) : '';
+      const hTs = h.signOutTime ? String(h.signOutTime) : (h.timestamp ? String(h.timestamp) : '');
+      return hId !== targetIdStr && hTs !== targetIdStr;
+    });
+    this.saveHistory(updated, source);
+    return updated;
   }
 
   addHistoryRecord(record) {
