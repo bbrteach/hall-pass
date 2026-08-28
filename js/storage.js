@@ -17,6 +17,7 @@ const STORAGE_KEYS = {
   ROSTER: 'roster',
   SETTINGS: 'hallpass_settings',
   ACTIVE_PASS: 'hallpass_active_pass',
+  SHADOW_PASS: 'hallpass_shadow_pass',
   WAIT_LIST: 'hallpass_wait_list',
   PENDING_APPROVAL: 'hallpass_pending_approval',
   TIME_SIMULATION: 'hallpass_time_simulation',
@@ -27,18 +28,18 @@ const STORAGE_KEYS = {
 // 1st Period: 8:40 to 9:30
 // 2nd Period: 9:35 to 10:25
 // 3rd Period: 10:30 to 11:20
-// 4th Period: 11:25 to 12:35
+// 4th Period: 11:25 to 12:35 (Blacked out by default)
 // 5th Period: 12:40 to 1:30
 // 6th Period: 1:35 to 2:25
 // 7th Period: 2:30 to 3:20
 const DEFAULT_SCHEDULES = [
-  { id: 'p1', name: '1st Period', start: '08:40', end: '09:30' },
-  { id: 'p2', name: '2nd Period', start: '09:35', end: '10:25' },
-  { id: 'p3', name: '3rd Period', start: '10:30', end: '11:20' },
-  { id: 'p4', name: '4th Period', start: '11:25', end: '12:35' },
-  { id: 'p5', name: '5th Period', start: '12:40', end: '13:30' },
-  { id: 'p6', name: '6th Period', start: '13:35', end: '14:25' },
-  { id: 'p7', name: '7th Period', start: '14:30', end: '15:20' }
+  { id: 'p1', name: '1st Period', start: '08:40', end: '09:30', isBlackedOut: false },
+  { id: 'p2', name: '2nd Period', start: '09:35', end: '10:25', isBlackedOut: false },
+  { id: 'p3', name: '3rd Period', start: '10:30', end: '11:20', isBlackedOut: false },
+  { id: 'p4', name: '4th Period', start: '11:25', end: '12:35', isBlackedOut: true },
+  { id: 'p5', name: '5th Period', start: '12:40', end: '13:30', isBlackedOut: false },
+  { id: 'p6', name: '6th Period', start: '13:35', end: '14:25', isBlackedOut: false },
+  { id: 'p7', name: '7th Period', start: '14:30', end: '15:20', isBlackedOut: false }
 ];
 
 // Default Blackout Rules:
@@ -224,6 +225,14 @@ class StorageManager {
     this.set(STORAGE_KEYS.ACTIVE_PASS, pass, source);
   }
 
+  getShadowPass() {
+    return this.get(STORAGE_KEYS.SHADOW_PASS, null);
+  }
+
+  saveShadowPass(pass, source = 'local') {
+    this.set(STORAGE_KEYS.SHADOW_PASS, pass, source);
+  }
+
   getWaitList() {
     return this.get(STORAGE_KEYS.WAIT_LIST, []);
   }
@@ -243,6 +252,13 @@ class StorageManager {
 
   clearHistory() {
     this.saveHistory([]);
+  }
+
+  clearSimulationHistory() {
+    const history = this.getHistory();
+    const realHistory = history.filter(h => !h.isSimulated);
+    this.saveHistory(realHistory);
+    return realHistory;
   }
 
   addHistoryRecord(record) {

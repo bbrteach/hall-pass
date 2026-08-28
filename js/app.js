@@ -505,11 +505,13 @@ export class HallPassApp {
           if (enteredPin === correctPin || enteredPin === '924226') {
             const req = this.storage.getPendingApproval();
             if (req) {
+              const evalRes = this.scheduleEngine.evaluate();
               this.queueManager.signOut(
                 { id: req.studentId, name: req.studentName, period: req.periodId },
                 req.destination,
                 req.destinationDetail,
-                { id: req.periodId, name: req.periodName }
+                { id: req.periodId, name: req.periodName },
+                evalRes.isSimulated
               );
               this.storage.savePendingApproval(null);
               const modal = document.getElementById('approval-wait-modal');
@@ -804,7 +806,8 @@ export class HallPassApp {
         this.selectedStudent,
         this.selectedDestination || 'Restroom',
         this.selectedDestinationDetail,
-        evaluation.currentPeriod
+        evaluation.currentPeriod,
+        evaluation.isSimulated
       );
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();
@@ -836,8 +839,10 @@ export class HallPassApp {
       this.showToast(`Welcome back, ${res.completedPass.studentName}! (${this.scheduleEngine.formatDuration(res.completedPass.durationSeconds)})`, 'success');
     }
 
-    // If nextInLine is available and hold/blackout is NOT active and waitListEnabled is true
-    if (res.nextInLine && !isHoldActive && waitListEnabled) {
+    if (res.promotedShadowPass) {
+      this.showToast(`👻 ${res.promotedShadowPass.studentName} is now active on the main pass.`, 'info');
+      this.updateState();
+    } else if (res.nextInLine && !isHoldActive && waitListEnabled) {
       this.promptNextStudent(res.nextInLine);
     } else {
       this.updateState();
@@ -922,7 +927,8 @@ export class HallPassApp {
         this.selectedStudent,
         dest,
         detail,
-        evaluation.currentPeriod
+        evaluation.currentPeriod,
+        evaluation.isSimulated
       );
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();

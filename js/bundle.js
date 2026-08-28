@@ -116,6 +116,7 @@ const STORAGE_KEYS = {
   ROSTER: 'roster',
   SETTINGS: 'hallpass_settings',
   ACTIVE_PASS: 'hallpass_active_pass',
+  SHADOW_PASS: 'hallpass_shadow_pass',
   WAIT_LIST: 'hallpass_wait_list',
   PENDING_APPROVAL: 'hallpass_pending_approval',
   TIME_SIMULATION: 'hallpass_time_simulation',
@@ -126,18 +127,18 @@ const STORAGE_KEYS = {
 // 1st Period: 8:40 to 9:30
 // 2nd Period: 9:35 to 10:25
 // 3rd Period: 10:30 to 11:20
-// 4th Period: 11:25 to 12:35
+// 4th Period: 11:25 to 12:35 (Blacked out by default)
 // 5th Period: 12:40 to 1:30
 // 6th Period: 1:35 to 2:25
 // 7th Period: 2:30 to 3:20
 const DEFAULT_SCHEDULES = [
-  { id: 'p1', name: '1st Period', start: '08:40', end: '09:30' },
-  { id: 'p2', name: '2nd Period', start: '09:35', end: '10:25' },
-  { id: 'p3', name: '3rd Period', start: '10:30', end: '11:20' },
-  { id: 'p4', name: '4th Period', start: '11:25', end: '12:35' },
-  { id: 'p5', name: '5th Period', start: '12:40', end: '13:30' },
-  { id: 'p6', name: '6th Period', start: '13:35', end: '14:25' },
-  { id: 'p7', name: '7th Period', start: '14:30', end: '15:20' }
+  { id: 'p1', name: '1st Period', start: '08:40', end: '09:30', isBlackedOut: false },
+  { id: 'p2', name: '2nd Period', start: '09:35', end: '10:25', isBlackedOut: false },
+  { id: 'p3', name: '3rd Period', start: '10:30', end: '11:20', isBlackedOut: false },
+  { id: 'p4', name: '4th Period', start: '11:25', end: '12:35', isBlackedOut: true },
+  { id: 'p5', name: '5th Period', start: '12:40', end: '13:30', isBlackedOut: false },
+  { id: 'p6', name: '6th Period', start: '13:35', end: '14:25', isBlackedOut: false },
+  { id: 'p7', name: '7th Period', start: '14:30', end: '15:20', isBlackedOut: false }
 ];
 
 // Default Blackout Rules:
@@ -323,6 +324,14 @@ class StorageManager {
     this.set(STORAGE_KEYS.ACTIVE_PASS, pass, source);
   }
 
+  getShadowPass() {
+    return this.get(STORAGE_KEYS.SHADOW_PASS, null);
+  }
+
+  saveShadowPass(pass, source = 'local') {
+    this.set(STORAGE_KEYS.SHADOW_PASS, pass, source);
+  }
+
   getWaitList() {
     return this.get(STORAGE_KEYS.WAIT_LIST, []);
   }
@@ -342,6 +351,13 @@ class StorageManager {
 
   clearHistory() {
     this.saveHistory([]);
+  }
+
+  clearSimulationHistory() {
+    const history = this.getHistory();
+    const realHistory = history.filter(h => !h.isSimulated);
+    this.saveHistory(realHistory);
+    return realHistory;
   }
 
   addHistoryRecord(record) {
@@ -643,6 +659,24 @@ class ScheduleEngine {
     const minsFromStart = currentMins - startM;
     const minsUntilEnd = endM - currentMins;
 
+    // Check Period-Specific Blackout (e.g. 4th Period or any teacher-blocked period)
+    if (currentPeriod.isBlackedOut) {
+      const unlockTimeStr = this.formatTime12Hour(currentPeriod.end);
+      return {
+        state: 'BLACKOUT',
+        reasonType: 'PERIOD_BLACKOUT',
+        title: `${currentPeriod.name} Restricted`,
+        reason: 'The Hall Pass is not available during this class period.',
+        canWaitlist: false,
+        purgeWaitlist: false,
+        unlockTime: unlockTimeStr,
+        currentPeriod,
+        timeStr,
+        formattedTime: this.formatTime12Hour(timeStr),
+        isSimulated
+      };
+    }
+
     // Check Custom Blackouts (e.g. Start/End of Day, Lunch, Testing)
     if (blackoutRules.customBlackouts && blackoutRules.customBlackouts.length > 0) {
       for (const cb of blackoutRules.customBlackouts) {
@@ -751,13 +785,20 @@ class QueueManager {
     return this.storage.getActivePass();
   }
 
+  getShadowPass() {
+    return this.storage.getShadowPass();
+  }
+
   getWaitList() {
     return this.storage.getWaitList() || [];
   }
 
   isStudentOut(studentId) {
     const active = this.getActivePass();
-    return active && active.studentId === studentId;
+    if (active && active.studentId === studentId) return true;
+    const shadow = this.getShadowPass();
+    if (shadow && shadow.studentId === studentId) return true;
+    return false;
   }
 
   isStudentOnWaitList(studentId) {
@@ -765,8 +806,8 @@ class QueueManager {
     return waitList.some(item => item.studentId === studentId);
   }
 
-  // Sign out a student
-  signOut(student, destination, destinationDetail = '', currentPeriod = null) {
+  // Sign out a student (Main Pass)
+  signOut(student, destination, destinationDetail = '', currentPeriod = null, isSimulated = false) {
     const active = this.getActivePass();
     if (active) {
       throw new Error(`The hall pass is already signed out to ${active.studentName}`);
@@ -792,6 +833,7 @@ class QueueManager {
       destinationDetail: destinationDetail || '',
       signOutTime: now,
       date: new Date().toISOString().split('T')[0],
+      isSimulated: !!isSimulated,
       status: 'active'
     };
 
@@ -801,11 +843,77 @@ class QueueManager {
     return pass;
   }
 
-  // Sign in / Return current student
+  // Issue a Shadow Pass from Teacher Dashboard
+  issueShadowPass(student, destination, destinationDetail = '', currentPeriod = null, autoPromote = true, isSimulated = false) {
+    // Remove student from wait list
+    this.removeFromWaitList(student.id || student.studentId);
+    if (this.nextPromptStudent && this.nextPromptStudent.studentId === (student.id || student.studentId)) {
+      this.nextPromptStudent = null;
+    }
+
+    const now = Date.now();
+    const periodId = currentPeriod ? currentPeriod.id : (student.period || 'p2');
+    const periodName = currentPeriod ? currentPeriod.name : 'Class';
+
+    const shadowPass = {
+      id: 'pass_shadow_' + now + '_' + Math.random().toString(36).substring(2, 7),
+      studentId: student.id || student.studentId,
+      studentName: student.name || student.studentName,
+      periodId: periodId,
+      periodName: periodName,
+      destination: destination,
+      destinationDetail: destinationDetail || '',
+      signOutTime: now,
+      date: new Date().toISOString().split('T')[0],
+      autoPromote: autoPromote !== false,
+      isShadow: true,
+      isSimulated: !!isSimulated,
+      status: 'active'
+    };
+
+    this.storage.saveShadowPass(shadowPass);
+    if (this.sounds) this.sounds.play('checkout');
+
+    return shadowPass;
+  }
+
+  // Update autoPromote setting on active shadow pass
+  updateShadowPassAutoPromote(autoPromote) {
+    const sp = this.getShadowPass();
+    if (sp) {
+      sp.autoPromote = !!autoPromote;
+      this.storage.saveShadowPass(sp);
+    }
+    return sp;
+  }
+
+  // Return / Sign in Shadow Pass manually from Dashboard
+  returnShadowPass(overrideStatus = 'completed') {
+    const sp = this.getShadowPass();
+    if (!sp) return null;
+
+    const returnTime = Date.now();
+    const durationSeconds = Math.max(1, Math.round((returnTime - sp.signOutTime) / 1000));
+
+    const completedPass = {
+      ...sp,
+      returnTime,
+      durationSeconds,
+      status: overrideStatus
+    };
+
+    this.storage.addHistoryRecord(completedPass);
+    this.storage.saveShadowPass(null);
+
+    if (this.sounds) this.sounds.play('checkin');
+    return completedPass;
+  }
+
+  // Sign in / Return current student (Main Pass)
   signIn(overrideStatus = 'completed', isHoldActive = false) {
     const active = this.getActivePass();
     if (!active) {
-      return { completedPass: null, nextInLine: null };
+      return { completedPass: null, nextInLine: null, promotedShadowPass: null };
     }
 
     const returnTime = Date.now();
@@ -823,11 +931,24 @@ class QueueManager {
 
     if (this.sounds) this.sounds.play('checkin');
 
+    // Check if an active Shadow Pass with autoPromote: true exists
+    const shadowPass = this.getShadowPass();
+    if (shadowPass && shadowPass.autoPromote !== false && !isHoldActive) {
+      const promotedPass = {
+        ...shadowPass,
+        isShadow: false
+      };
+      this.storage.saveActivePass(promotedPass);
+      this.storage.saveShadowPass(null);
+      this.nextPromptStudent = null;
+      return { completedPass, promotedShadowPass: promotedPass, nextInLine: null };
+    }
+
     // If an emergency hold / pause / blackout is active, DO NOT pop from waitlist or allow another sign-out!
     // Maintain the entire wait list and return nextInLine: null
     if (isHoldActive) {
       this.nextPromptStudent = null;
-      return { completedPass, nextInLine: null };
+      return { completedPass, nextInLine: null, promotedShadowPass: null };
     }
 
     // Normal pass return: check wait list
@@ -844,7 +965,7 @@ class QueueManager {
       this.nextPromptStudent = null;
     }
 
-    return { completedPass, nextInLine };
+    return { completedPass, nextInLine, promotedShadowPass: null };
   }
 
   // Add a student to the wait list
@@ -1595,6 +1716,7 @@ class CloudSyncEngine {
         timestamp: Date.now(),
         roomCode: this.roomCode,
         activePass: this.storage.getActivePass(),
+        shadowPass: this.storage.getShadowPass(),
         waitList: this.storage.getWaitList(),
         blackoutRules: this.storage.getBlackoutRules(),
         schedules: this.storage.getSchedules(),
@@ -1626,6 +1748,14 @@ class CloudSyncEngine {
           remotePayload.activePass.signOutTime = Date.now() - elapsedMs;
         }
         this.storage.saveActivePass(remotePayload.activePass, 'remote');
+      }
+      if (remotePayload.shadowPass !== undefined) {
+        if (remotePayload.shadowPass && remotePayload.shadowPass.signOutTime) {
+          const remoteTimestamp = remotePayload.timestamp || Date.now();
+          const elapsedMs = Math.max(0, remoteTimestamp - remotePayload.shadowPass.signOutTime);
+          remotePayload.shadowPass.signOutTime = Date.now() - elapsedMs;
+        }
+        this.storage.saveShadowPass(remotePayload.shadowPass, 'remote');
       }
       if (remotePayload.waitList !== undefined) {
         this.storage.saveWaitList(remotePayload.waitList, 'remote');
@@ -1789,7 +1919,19 @@ class TeacherDashboard {
         if (confirm('Are you sure you want to completely clear all pass logs and start fresh with empty data? This will clear logs across all connected devices.')) {
           this.storage.clearHistory();
           this.renderAnalytics();
+          if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
           alert('All pass history logs have been completely cleared.');
+        }
+      });
+    });
+
+    document.querySelectorAll('.btn-clear-sim-logs, #btn-clear-sim-logs').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear all simulation test logs? All real student kiosk logs will remain intact.')) {
+          this.storage.clearSimulationHistory();
+          this.renderAnalytics();
+          if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+          alert('Simulation test logs cleared! Real student logs preserved.');
         }
       });
     });
@@ -2001,6 +2143,7 @@ class TeacherDashboard {
     }
 
     const activeBox = document.getElementById('monitor-active-pass-box');
+    const shadowBox = document.getElementById('monitor-shadow-pass-box');
     const waitListBox = document.getElementById('monitor-waitlist-box');
     const lockdownBtn = document.getElementById('btn-toggle-lockdown');
 
@@ -2022,7 +2165,7 @@ class TeacherDashboard {
             <div>
               <div class="flex items-center gap-2">
                 <span class="inline-block w-3 h-3 bg-red-600 rounded-full animate-ping"></span>
-                <span class="text-xs font-bold text-red-700 uppercase tracking-wide">Pass Signed Out</span>
+                <span class="text-xs font-bold text-red-700 uppercase tracking-wide">Main Pass Signed Out</span>
               </div>
               <h3 class="text-xl font-black text-gray-900 mt-1">${activePass.studentName}</h3>
               <p class="text-sm text-gray-600">Destination: <strong class="text-gray-900">${activePass.destination} ${activePass.destinationDetail ? '(' + activePass.destinationDetail + ')' : ''}</strong> | Period: ${activePass.periodName}</p>
@@ -2036,6 +2179,7 @@ class TeacherDashboard {
           btnForce.addEventListener('click', () => {
             this.queueManager.forceReturn();
             this.renderMonitor();
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
             window.dispatchEvent(new CustomEvent('hallpass:statechange'));
           });
         }
@@ -2043,12 +2187,56 @@ class TeacherDashboard {
         activeBox.innerHTML = `
           <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-emerald-800 flex items-center justify-between">
             <div>
-              <p class="font-bold">No Student Currently Out</p>
-              <p class="text-xs text-emerald-600">The hall pass is currently in the classroom.</p>
+              <p class="font-bold">No Student Currently Out (Main Pass)</p>
+              <p class="text-xs text-emerald-600">The main hall pass is available in the classroom.</p>
             </div>
             <span class="px-3 py-1 bg-emerald-200 text-emerald-900 text-xs font-black rounded-full uppercase">Pass Available</span>
           </div>
         `;
+      }
+    }
+
+    const shadowPass = this.queueManager.getShadowPass();
+    if (shadowBox) {
+      if (shadowPass) {
+        const elapsedSec = Math.max(0, Math.round((Date.now() - shadowPass.signOutTime) / 1000));
+        shadowBox.classList.remove('hidden');
+        shadowBox.innerHTML = `
+          <div class="bg-purple-50 border-2 border-purple-300 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="inline-block w-3 h-3 bg-purple-600 rounded-full animate-pulse"></span>
+                <span class="text-xs font-black text-purple-700 uppercase tracking-wide">👻 Active Shadow Pass</span>
+              </div>
+              <h3 class="text-xl font-black text-gray-900 mt-1">${shadowPass.studentName}</h3>
+              <p class="text-sm text-gray-600">Destination: <strong class="text-gray-900">${shadowPass.destination} ${shadowPass.destinationDetail ? '(' + shadowPass.destinationDetail + ')' : ''}</strong> | Period: ${shadowPass.periodName}</p>
+              <p class="text-xs text-purple-700 font-semibold mt-1">Out at ${new Date(shadowPass.signOutTime).toLocaleTimeString()} (Elapsed: ${this.scheduleEngine.formatDuration(elapsedSec)})</p>
+              <label class="inline-flex items-center gap-2 mt-2 text-xs font-bold text-gray-800 cursor-pointer bg-white px-2.5 py-1.5 rounded-lg border border-purple-200 shadow-sm">
+                <input type="checkbox" id="chk-shadow-autopromote" class="rounded text-purple-600" ${shadowPass.autoPromote !== false ? 'checked' : ''}>
+                <span>Auto-promote to Main Pass on kiosk when current student returns</span>
+              </label>
+            </div>
+            <button id="btn-return-shadow-pass" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-lg shadow transition">↩️ Return Shadow Pass</button>
+          </div>
+        `;
+        const chkAuto = document.getElementById('chk-shadow-autopromote');
+        if (chkAuto) {
+          chkAuto.addEventListener('change', (e) => {
+            this.queueManager.updateShadowPassAutoPromote(e.target.checked);
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+          });
+        }
+        const btnReturnShadow = document.getElementById('btn-return-shadow-pass');
+        if (btnReturnShadow) {
+          btnReturnShadow.addEventListener('click', () => {
+            this.queueManager.returnShadowPass();
+            this.renderMonitor();
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        }
+      } else {
+        shadowBox.classList.add('hidden');
       }
     }
 
@@ -2068,6 +2256,7 @@ class TeacherDashboard {
                 </div>
               </div>
               <div class="flex items-center gap-1.5">
+                <button data-id="${st.studentId}" class="btn-issue-shadow text-xs text-purple-700 hover:text-purple-900 font-bold px-2.5 py-1 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 transition active:scale-95" title="Issue Shadow Pass to this student">👻 Shadow Pass</button>
                 ${idx > 0 ? `<button data-id="${st.studentId}" class="btn-moveup-waitlist text-xs text-blue-700 hover:text-blue-900 font-bold px-2.5 py-1 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition active:scale-95" title="Move Up in Line">⬆️ Up</button>` : ''}
                 ${idx < waitList.length - 1 ? `<button data-id="${st.studentId}" class="btn-movedown-waitlist text-xs text-blue-700 hover:text-blue-900 font-bold px-2.5 py-1 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition active:scale-95" title="Move Down in Line">⬇️ Down</button>` : ''}
                 <button data-id="${st.studentId}" class="btn-remove-waitlist text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 transition ml-1">Remove</button>
@@ -2077,6 +2266,23 @@ class TeacherDashboard {
         });
         html += '</div>';
         waitListBox.innerHTML = html;
+
+        waitListBox.querySelectorAll('.btn-issue-shadow').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const sid = btn.dataset.id;
+            const st = waitList.find(item => item.studentId === sid);
+            if (st) {
+              const dest = prompt(`Issue Shadow Pass for ${st.studentName}:\nEnter destination (Restroom, Nurse, Library, Office, etc.):`, 'Restroom');
+              if (dest) {
+                const evalRes = this.scheduleEngine.evaluate();
+                this.queueManager.issueShadowPass(st, dest, '', evalRes.currentPeriod, true, evalRes.isSimulated);
+                this.renderMonitor();
+                if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+                window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+              }
+            }
+          });
+        });
 
         waitListBox.querySelectorAll('.btn-moveup-waitlist').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -2235,14 +2441,16 @@ class TeacherDashboard {
           const outStr = r.signOutTime ? new Date(r.signOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
           const inStr = r.returnTime ? new Date(r.returnTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Out';
           html += `
-            <tr class="border-b border-gray-100 text-xs">
+            <tr class="border-b border-gray-100 text-xs hover:bg-gray-50 transition">
               <td class="py-2 px-3 text-gray-600">${r.date || 'Today'}</td>
               <td class="py-2 px-3 font-semibold text-gray-900">${r.studentName}</td>
               <td class="py-2 px-3 text-gray-600">${r.periodName || r.periodId}</td>
               <td class="py-2 px-3 text-gray-800 font-medium">${r.destination} ${r.destinationDetail ? '(' + r.destinationDetail + ')' : ''}</td>
               <td class="py-2 px-3 text-gray-500">${outStr} - ${inStr}</td>
               <td class="py-2 px-3 font-bold text-gray-700">${this.scheduleEngine.formatDuration(r.durationSeconds)}</td>
-              <td class="py-2 px-3 text-gray-400 capitalize">${r.status || 'completed'}</td>
+              <td class="py-2 px-3">
+                ${r.isSimulated ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">🧪 Simulation</span>' : '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">🟢 Live Kiosk</span>'}
+              </td>
             </tr>
           `;
         });
@@ -2277,8 +2485,8 @@ class TeacherDashboard {
       let html = '';
       schedules.forEach((p, idx) => {
         html += `
-          <div class="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg schedule-row" data-index="${idx}">
-            <input type="text" class="period-name font-semibold text-gray-900 border rounded px-2 py-1 w-36" value="${p.name}">
+          <div class="flex flex-wrap items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg schedule-row" data-index="${idx}">
+            <input type="text" class="period-name font-semibold text-gray-900 border rounded px-2 py-1 w-32 md:w-36" value="${p.name}">
             <div class="flex items-center gap-1 text-sm text-gray-600">
               <span>Start:</span>
               <input type="time" class="period-start border rounded px-2 py-1" value="${p.start}">
@@ -2287,11 +2495,24 @@ class TeacherDashboard {
               <span>End:</span>
               <input type="time" class="period-end border rounded px-2 py-1" value="${p.end}">
             </div>
+            <label class="flex items-center gap-1.5 text-xs font-bold ${p.isBlackedOut ? 'text-rose-700 bg-rose-100 border-rose-300' : 'text-gray-700 bg-white border-gray-200'} cursor-pointer px-2.5 py-1 rounded border transition">
+              <input type="checkbox" class="period-blackout rounded text-rose-600" ${p.isBlackedOut ? 'checked' : ''}>
+              <span>⛔ Black Out Period</span>
+            </label>
             <button type="button" class="btn-delete-period text-rose-600 hover:text-rose-800 ml-auto text-sm font-semibold">✕ Delete</button>
           </div>
         `;
       });
       list.innerHTML = html;
+
+      list.querySelectorAll('.period-blackout').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+          const parent = e.target.closest('label');
+          if (parent) {
+            parent.className = `flex items-center gap-1.5 text-xs font-bold ${e.target.checked ? 'text-rose-700 bg-rose-100 border-rose-300' : 'text-gray-700 bg-white border-gray-200'} cursor-pointer px-2.5 py-1 rounded border transition`;
+          }
+        });
+      });
 
       list.querySelectorAll('.btn-delete-period').forEach((btn, idx) => {
         btn.addEventListener('click', () => {
@@ -2310,7 +2531,8 @@ class TeacherDashboard {
           id: `p${nextNum}`,
           name: `${nextNum}${nextNum === 1 ? 'st' : nextNum === 2 ? 'nd' : nextNum === 3 ? 'rd' : 'th'} Period`,
           start: '08:00',
-          end: '09:00'
+          end: '09:00',
+          isBlackedOut: false
         });
         this.storage.saveSchedules(schedules);
         this.renderSchedulesTab();
@@ -2325,11 +2547,13 @@ class TeacherDashboard {
       const name = r.querySelector('.period-name').value.trim() || `Period ${idx + 1}`;
       const start = r.querySelector('.period-start').value;
       const end = r.querySelector('.period-end').value;
+      const isBlackedOut = r.querySelector('.period-blackout') ? r.querySelector('.period-blackout').checked : false;
       newSchedules.push({
         id: `p${idx + 1}`,
         name,
         start,
-        end
+        end,
+        isBlackedOut
       });
     });
 
@@ -3069,11 +3293,13 @@ class HallPassApp {
           if (enteredPin === correctPin || enteredPin === '924226') {
             const req = this.storage.getPendingApproval();
             if (req) {
+              const evalRes = this.scheduleEngine.evaluate();
               this.queueManager.signOut(
                 { id: req.studentId, name: req.studentName, period: req.periodId },
                 req.destination,
                 req.destinationDetail,
-                { id: req.periodId, name: req.periodName }
+                { id: req.periodId, name: req.periodName },
+                evalRes.isSimulated
               );
               this.storage.savePendingApproval(null);
               const modal = document.getElementById('approval-wait-modal');
@@ -3368,7 +3594,8 @@ class HallPassApp {
         this.selectedStudent,
         this.selectedDestination || 'Restroom',
         this.selectedDestinationDetail,
-        evaluation.currentPeriod
+        evaluation.currentPeriod,
+        evaluation.isSimulated
       );
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();
@@ -3400,8 +3627,10 @@ class HallPassApp {
       this.showToast(`Welcome back, ${res.completedPass.studentName}! (${this.scheduleEngine.formatDuration(res.completedPass.durationSeconds)})`, 'success');
     }
 
-    // If nextInLine is available and hold/blackout is NOT active and waitListEnabled is true
-    if (res.nextInLine && !isHoldActive && waitListEnabled) {
+    if (res.promotedShadowPass) {
+      this.showToast(`👻 ${res.promotedShadowPass.studentName} is now active on the main pass.`, 'info');
+      this.updateState();
+    } else if (res.nextInLine && !isHoldActive && waitListEnabled) {
       this.promptNextStudent(res.nextInLine);
     } else {
       this.updateState();
@@ -3486,7 +3715,8 @@ class HallPassApp {
         this.selectedStudent,
         dest,
         detail,
-        evaluation.currentPeriod
+        evaluation.currentPeriod,
+        evaluation.isSimulated
       );
       this.showToast(`${this.selectedStudent.name} is now signed out!`, 'success');
       this.updateState();

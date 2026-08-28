@@ -232,6 +232,24 @@ export class ScheduleEngine {
     const minsFromStart = currentMins - startM;
     const minsUntilEnd = endM - currentMins;
 
+    // Check Period-Specific Blackout (e.g. 4th Period or any teacher-blocked period)
+    if (currentPeriod.isBlackedOut) {
+      const unlockTimeStr = this.formatTime12Hour(currentPeriod.end);
+      return {
+        state: 'BLACKOUT',
+        reasonType: 'PERIOD_BLACKOUT',
+        title: `${currentPeriod.name} Restricted`,
+        reason: 'The Hall Pass is not available during this class period.',
+        canWaitlist: false,
+        purgeWaitlist: false,
+        unlockTime: unlockTimeStr,
+        currentPeriod,
+        timeStr,
+        formattedTime: this.formatTime12Hour(timeStr),
+        isSimulated
+      };
+    }
+
     // Check Custom Blackouts (e.g. Start/End of Day, Lunch, Testing)
     if (blackoutRules.customBlackouts && blackoutRules.customBlackouts.length > 0) {
       for (const cb of blackoutRules.customBlackouts) {

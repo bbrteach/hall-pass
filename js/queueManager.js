@@ -11,13 +11,20 @@ export class QueueManager {
     return this.storage.getActivePass();
   }
 
+  getShadowPass() {
+    return this.storage.getShadowPass();
+  }
+
   getWaitList() {
     return this.storage.getWaitList() || [];
   }
 
   isStudentOut(studentId) {
     const active = this.getActivePass();
-    return active && active.studentId === studentId;
+    if (active && active.studentId === studentId) return true;
+    const shadow = this.getShadowPass();
+    if (shadow && shadow.studentId === studentId) return true;
+    return false;
   }
 
   isStudentOnWaitList(studentId) {
@@ -25,8 +32,8 @@ export class QueueManager {
     return waitList.some(item => item.studentId === studentId);
   }
 
-  // Sign out a student
-  signOut(student, destination, destinationDetail = '', currentPeriod = null) {
+  // Sign out a student (Main Pass)
+  signOut(student, destination, destinationDetail = '', currentPeriod = null, isSimulated = false) {
     const active = this.getActivePass();
     if (active) {
       throw new Error(`The hall pass is already signed out to ${active.studentName}`);
@@ -52,6 +59,7 @@ export class QueueManager {
       destinationDetail: destinationDetail || '',
       signOutTime: now,
       date: new Date().toISOString().split('T')[0],
+      isSimulated: !!isSimulated,
       status: 'active'
     };
 
@@ -61,11 +69,77 @@ export class QueueManager {
     return pass;
   }
 
-  // Sign in / Return current student
+  // Issue a Shadow Pass from Teacher Dashboard
+  issueShadowPass(student, destination, destinationDetail = '', currentPeriod = null, autoPromote = true, isSimulated = false) {
+    // Remove student from wait list
+    this.removeFromWaitList(student.id || student.studentId);
+    if (this.nextPromptStudent && this.nextPromptStudent.studentId === (student.id || student.studentId)) {
+      this.nextPromptStudent = null;
+    }
+
+    const now = Date.now();
+    const periodId = currentPeriod ? currentPeriod.id : (student.period || 'p2');
+    const periodName = currentPeriod ? currentPeriod.name : 'Class';
+
+    const shadowPass = {
+      id: 'pass_shadow_' + now + '_' + Math.random().toString(36).substring(2, 7),
+      studentId: student.id || student.studentId,
+      studentName: student.name || student.studentName,
+      periodId: periodId,
+      periodName: periodName,
+      destination: destination,
+      destinationDetail: destinationDetail || '',
+      signOutTime: now,
+      date: new Date().toISOString().split('T')[0],
+      autoPromote: autoPromote !== false,
+      isShadow: true,
+      isSimulated: !!isSimulated,
+      status: 'active'
+    };
+
+    this.storage.saveShadowPass(shadowPass);
+    if (this.sounds) this.sounds.play('checkout');
+
+    return shadowPass;
+  }
+
+  // Update autoPromote setting on active shadow pass
+  updateShadowPassAutoPromote(autoPromote) {
+    const sp = this.getShadowPass();
+    if (sp) {
+      sp.autoPromote = !!autoPromote;
+      this.storage.saveShadowPass(sp);
+    }
+    return sp;
+  }
+
+  // Return / Sign in Shadow Pass manually from Dashboard
+  returnShadowPass(overrideStatus = 'completed') {
+    const sp = this.getShadowPass();
+    if (!sp) return null;
+
+    const returnTime = Date.now();
+    const durationSeconds = Math.max(1, Math.round((returnTime - sp.signOutTime) / 1000));
+
+    const completedPass = {
+      ...sp,
+      returnTime,
+      durationSeconds,
+      status: overrideStatus
+    };
+
+    this.storage.addHistoryRecord(completedPass);
+    this.storage.saveShadowPass(null);
+
+    if (this.sounds) this.sounds.play('checkin');
+    return completedPass;
+  }
+
+  // Sign in / Return current student (Main Pass)
   signIn(overrideStatus = 'completed', isHoldActive = false) {
     const active = this.getActivePass();
     if (!active) {
-      return { completedPass: null, nextInLine: null };
+      return { completedPass: null, nextInLine: null, promotedShadowPass: null };
     }
 
     const returnTime = Date.now();
@@ -83,11 +157,24 @@ export class QueueManager {
 
     if (this.sounds) this.sounds.play('checkin');
 
+    // Check if an active Shadow Pass with autoPromote: true exists
+    const shadowPass = this.getShadowPass();
+    if (shadowPass && shadowPass.autoPromote !== false && !isHoldActive) {
+      const promotedPass = {
+        ...shadowPass,
+        isShadow: false
+      };
+      this.storage.saveActivePass(promotedPass);
+      this.storage.saveShadowPass(null);
+      this.nextPromptStudent = null;
+      return { completedPass, promotedShadowPass: promotedPass, nextInLine: null };
+    }
+
     // If an emergency hold / pause / blackout is active, DO NOT pop from waitlist or allow another sign-out!
     // Maintain the entire wait list and return nextInLine: null
     if (isHoldActive) {
       this.nextPromptStudent = null;
-      return { completedPass, nextInLine: null };
+      return { completedPass, nextInLine: null, promotedShadowPass: null };
     }
 
     // Normal pass return: check wait list
@@ -104,7 +191,7 @@ export class QueueManager {
       this.nextPromptStudent = null;
     }
 
-    return { completedPass, nextInLine };
+    return { completedPass, nextInLine, promotedShadowPass: null };
   }
 
   // Add a student to the wait list

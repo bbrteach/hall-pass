@@ -240,6 +240,7 @@ export class CloudSyncEngine {
         timestamp: Date.now(),
         roomCode: this.roomCode,
         activePass: this.storage.getActivePass(),
+        shadowPass: this.storage.getShadowPass(),
         waitList: this.storage.getWaitList(),
         blackoutRules: this.storage.getBlackoutRules(),
         schedules: this.storage.getSchedules(),
@@ -271,6 +272,14 @@ export class CloudSyncEngine {
           remotePayload.activePass.signOutTime = Date.now() - elapsedMs;
         }
         this.storage.saveActivePass(remotePayload.activePass, 'remote');
+      }
+      if (remotePayload.shadowPass !== undefined) {
+        if (remotePayload.shadowPass && remotePayload.shadowPass.signOutTime) {
+          const remoteTimestamp = remotePayload.timestamp || Date.now();
+          const elapsedMs = Math.max(0, remoteTimestamp - remotePayload.shadowPass.signOutTime);
+          remotePayload.shadowPass.signOutTime = Date.now() - elapsedMs;
+        }
+        this.storage.saveShadowPass(remotePayload.shadowPass, 'remote');
       }
       if (remotePayload.waitList !== undefined) {
         this.storage.saveWaitList(remotePayload.waitList, 'remote');

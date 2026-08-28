@@ -61,6 +61,7 @@ class MockStorage {
         audioEnabled: false
       },
       activePass: null,
+      shadowPass: null,
       waitList: [],
       history: [],
       timeSimulation: { enabled: false }
@@ -77,10 +78,16 @@ class MockStorage {
   saveSettings(s) { this.data.settings = s; }
   getActivePass() { return this.data.activePass; }
   saveActivePass(p) { this.data.activePass = p; }
+  getShadowPass() { return this.data.shadowPass; }
+  saveShadowPass(p) { this.data.shadowPass = p; }
   getWaitList() { return this.data.waitList; }
   saveWaitList(w) { this.data.waitList = w; }
   getHistory() { return this.data.history; }
   saveHistory(h) { this.data.history = h; }
+  clearSimulationHistory() {
+    this.data.history = this.data.history.filter(h => !h.isSimulated);
+    return this.data.history;
+  }
   addHistoryRecord(r) { this.data.history.unshift(r); return this.data.history; }
   getTimeSimulation() { return this.data.timeSimulation; }
   saveTimeSimulation(t) { this.data.timeSimulation = t; }

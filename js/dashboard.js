@@ -99,7 +99,19 @@ export class TeacherDashboard {
         if (confirm('Are you sure you want to completely clear all pass logs and start fresh with empty data? This will clear logs across all connected devices.')) {
           this.storage.clearHistory();
           this.renderAnalytics();
+          if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
           alert('All pass history logs have been completely cleared.');
+        }
+      });
+    });
+
+    document.querySelectorAll('.btn-clear-sim-logs, #btn-clear-sim-logs').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear all simulation test logs? All real student kiosk logs will remain intact.')) {
+          this.storage.clearSimulationHistory();
+          this.renderAnalytics();
+          if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+          alert('Simulation test logs cleared! Real student logs preserved.');
         }
       });
     });
@@ -311,6 +323,7 @@ export class TeacherDashboard {
     }
 
     const activeBox = document.getElementById('monitor-active-pass-box');
+    const shadowBox = document.getElementById('monitor-shadow-pass-box');
     const waitListBox = document.getElementById('monitor-waitlist-box');
     const lockdownBtn = document.getElementById('btn-toggle-lockdown');
 
@@ -332,7 +345,7 @@ export class TeacherDashboard {
             <div>
               <div class="flex items-center gap-2">
                 <span class="inline-block w-3 h-3 bg-red-600 rounded-full animate-ping"></span>
-                <span class="text-xs font-bold text-red-700 uppercase tracking-wide">Pass Signed Out</span>
+                <span class="text-xs font-bold text-red-700 uppercase tracking-wide">Main Pass Signed Out</span>
               </div>
               <h3 class="text-xl font-black text-gray-900 mt-1">${activePass.studentName}</h3>
               <p class="text-sm text-gray-600">Destination: <strong class="text-gray-900">${activePass.destination} ${activePass.destinationDetail ? '(' + activePass.destinationDetail + ')' : ''}</strong> | Period: ${activePass.periodName}</p>
@@ -346,6 +359,7 @@ export class TeacherDashboard {
           btnForce.addEventListener('click', () => {
             this.queueManager.forceReturn();
             this.renderMonitor();
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
             window.dispatchEvent(new CustomEvent('hallpass:statechange'));
           });
         }
@@ -353,12 +367,56 @@ export class TeacherDashboard {
         activeBox.innerHTML = `
           <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-emerald-800 flex items-center justify-between">
             <div>
-              <p class="font-bold">No Student Currently Out</p>
-              <p class="text-xs text-emerald-600">The hall pass is currently in the classroom.</p>
+              <p class="font-bold">No Student Currently Out (Main Pass)</p>
+              <p class="text-xs text-emerald-600">The main hall pass is available in the classroom.</p>
             </div>
             <span class="px-3 py-1 bg-emerald-200 text-emerald-900 text-xs font-black rounded-full uppercase">Pass Available</span>
           </div>
         `;
+      }
+    }
+
+    const shadowPass = this.queueManager.getShadowPass();
+    if (shadowBox) {
+      if (shadowPass) {
+        const elapsedSec = Math.max(0, Math.round((Date.now() - shadowPass.signOutTime) / 1000));
+        shadowBox.classList.remove('hidden');
+        shadowBox.innerHTML = `
+          <div class="bg-purple-50 border-2 border-purple-300 p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="inline-block w-3 h-3 bg-purple-600 rounded-full animate-pulse"></span>
+                <span class="text-xs font-black text-purple-700 uppercase tracking-wide">👻 Active Shadow Pass</span>
+              </div>
+              <h3 class="text-xl font-black text-gray-900 mt-1">${shadowPass.studentName}</h3>
+              <p class="text-sm text-gray-600">Destination: <strong class="text-gray-900">${shadowPass.destination} ${shadowPass.destinationDetail ? '(' + shadowPass.destinationDetail + ')' : ''}</strong> | Period: ${shadowPass.periodName}</p>
+              <p class="text-xs text-purple-700 font-semibold mt-1">Out at ${new Date(shadowPass.signOutTime).toLocaleTimeString()} (Elapsed: ${this.scheduleEngine.formatDuration(elapsedSec)})</p>
+              <label class="inline-flex items-center gap-2 mt-2 text-xs font-bold text-gray-800 cursor-pointer bg-white px-2.5 py-1.5 rounded-lg border border-purple-200 shadow-sm">
+                <input type="checkbox" id="chk-shadow-autopromote" class="rounded text-purple-600" ${shadowPass.autoPromote !== false ? 'checked' : ''}>
+                <span>Auto-promote to Main Pass on kiosk when current student returns</span>
+              </label>
+            </div>
+            <button id="btn-return-shadow-pass" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-lg shadow transition">↩️ Return Shadow Pass</button>
+          </div>
+        `;
+        const chkAuto = document.getElementById('chk-shadow-autopromote');
+        if (chkAuto) {
+          chkAuto.addEventListener('change', (e) => {
+            this.queueManager.updateShadowPassAutoPromote(e.target.checked);
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+          });
+        }
+        const btnReturnShadow = document.getElementById('btn-return-shadow-pass');
+        if (btnReturnShadow) {
+          btnReturnShadow.addEventListener('click', () => {
+            this.queueManager.returnShadowPass();
+            this.renderMonitor();
+            if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+            window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+          });
+        }
+      } else {
+        shadowBox.classList.add('hidden');
       }
     }
 
@@ -378,6 +436,7 @@ export class TeacherDashboard {
                 </div>
               </div>
               <div class="flex items-center gap-1.5">
+                <button data-id="${st.studentId}" class="btn-issue-shadow text-xs text-purple-700 hover:text-purple-900 font-bold px-2.5 py-1 bg-purple-50 hover:bg-purple-100 rounded border border-purple-200 transition active:scale-95" title="Issue Shadow Pass to this student">👻 Shadow Pass</button>
                 ${idx > 0 ? `<button data-id="${st.studentId}" class="btn-moveup-waitlist text-xs text-blue-700 hover:text-blue-900 font-bold px-2.5 py-1 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition active:scale-95" title="Move Up in Line">⬆️ Up</button>` : ''}
                 ${idx < waitList.length - 1 ? `<button data-id="${st.studentId}" class="btn-movedown-waitlist text-xs text-blue-700 hover:text-blue-900 font-bold px-2.5 py-1 bg-blue-50 hover:bg-blue-100 rounded border border-blue-200 transition active:scale-95" title="Move Down in Line">⬇️ Down</button>` : ''}
                 <button data-id="${st.studentId}" class="btn-remove-waitlist text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded border border-rose-200 transition ml-1">Remove</button>
@@ -387,6 +446,23 @@ export class TeacherDashboard {
         });
         html += '</div>';
         waitListBox.innerHTML = html;
+
+        waitListBox.querySelectorAll('.btn-issue-shadow').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const sid = btn.dataset.id;
+            const st = waitList.find(item => item.studentId === sid);
+            if (st) {
+              const dest = prompt(`Issue Shadow Pass for ${st.studentName}:\nEnter destination (Restroom, Nurse, Library, Office, etc.):`, 'Restroom');
+              if (dest) {
+                const evalRes = this.scheduleEngine.evaluate();
+                this.queueManager.issueShadowPass(st, dest, '', evalRes.currentPeriod, true, evalRes.isSimulated);
+                this.renderMonitor();
+                if (this.cloudSync) this.cloudSync.broadcastState('SYNC_STATE');
+                window.dispatchEvent(new CustomEvent('hallpass:statechange'));
+              }
+            }
+          });
+        });
 
         waitListBox.querySelectorAll('.btn-moveup-waitlist').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -545,14 +621,16 @@ export class TeacherDashboard {
           const outStr = r.signOutTime ? new Date(r.signOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
           const inStr = r.returnTime ? new Date(r.returnTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Out';
           html += `
-            <tr class="border-b border-gray-100 text-xs">
+            <tr class="border-b border-gray-100 text-xs hover:bg-gray-50 transition">
               <td class="py-2 px-3 text-gray-600">${r.date || 'Today'}</td>
               <td class="py-2 px-3 font-semibold text-gray-900">${r.studentName}</td>
               <td class="py-2 px-3 text-gray-600">${r.periodName || r.periodId}</td>
               <td class="py-2 px-3 text-gray-800 font-medium">${r.destination} ${r.destinationDetail ? '(' + r.destinationDetail + ')' : ''}</td>
               <td class="py-2 px-3 text-gray-500">${outStr} - ${inStr}</td>
               <td class="py-2 px-3 font-bold text-gray-700">${this.scheduleEngine.formatDuration(r.durationSeconds)}</td>
-              <td class="py-2 px-3 text-gray-400 capitalize">${r.status || 'completed'}</td>
+              <td class="py-2 px-3">
+                ${r.isSimulated ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">🧪 Simulation</span>' : '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">🟢 Live Kiosk</span>'}
+              </td>
             </tr>
           `;
         });
@@ -587,8 +665,8 @@ export class TeacherDashboard {
       let html = '';
       schedules.forEach((p, idx) => {
         html += `
-          <div class="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg schedule-row" data-index="${idx}">
-            <input type="text" class="period-name font-semibold text-gray-900 border rounded px-2 py-1 w-36" value="${p.name}">
+          <div class="flex flex-wrap items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg schedule-row" data-index="${idx}">
+            <input type="text" class="period-name font-semibold text-gray-900 border rounded px-2 py-1 w-32 md:w-36" value="${p.name}">
             <div class="flex items-center gap-1 text-sm text-gray-600">
               <span>Start:</span>
               <input type="time" class="period-start border rounded px-2 py-1" value="${p.start}">
@@ -597,11 +675,24 @@ export class TeacherDashboard {
               <span>End:</span>
               <input type="time" class="period-end border rounded px-2 py-1" value="${p.end}">
             </div>
+            <label class="flex items-center gap-1.5 text-xs font-bold ${p.isBlackedOut ? 'text-rose-700 bg-rose-100 border-rose-300' : 'text-gray-700 bg-white border-gray-200'} cursor-pointer px-2.5 py-1 rounded border transition">
+              <input type="checkbox" class="period-blackout rounded text-rose-600" ${p.isBlackedOut ? 'checked' : ''}>
+              <span>⛔ Black Out Period</span>
+            </label>
             <button type="button" class="btn-delete-period text-rose-600 hover:text-rose-800 ml-auto text-sm font-semibold">✕ Delete</button>
           </div>
         `;
       });
       list.innerHTML = html;
+
+      list.querySelectorAll('.period-blackout').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+          const parent = e.target.closest('label');
+          if (parent) {
+            parent.className = `flex items-center gap-1.5 text-xs font-bold ${e.target.checked ? 'text-rose-700 bg-rose-100 border-rose-300' : 'text-gray-700 bg-white border-gray-200'} cursor-pointer px-2.5 py-1 rounded border transition`;
+          }
+        });
+      });
 
       list.querySelectorAll('.btn-delete-period').forEach((btn, idx) => {
         btn.addEventListener('click', () => {
@@ -620,7 +711,8 @@ export class TeacherDashboard {
           id: `p${nextNum}`,
           name: `${nextNum}${nextNum === 1 ? 'st' : nextNum === 2 ? 'nd' : nextNum === 3 ? 'rd' : 'th'} Period`,
           start: '08:00',
-          end: '09:00'
+          end: '09:00',
+          isBlackedOut: false
         });
         this.storage.saveSchedules(schedules);
         this.renderSchedulesTab();
@@ -635,11 +727,13 @@ export class TeacherDashboard {
       const name = r.querySelector('.period-name').value.trim() || `Period ${idx + 1}`;
       const start = r.querySelector('.period-start').value;
       const end = r.querySelector('.period-end').value;
+      const isBlackedOut = r.querySelector('.period-blackout') ? r.querySelector('.period-blackout').checked : false;
       newSchedules.push({
         id: `p${idx + 1}`,
         name,
         start,
-        end
+        end,
+        isBlackedOut
       });
     });
 
